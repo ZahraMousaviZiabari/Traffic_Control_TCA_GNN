@@ -28,7 +28,7 @@ class KKW:
         
         self.ncells = 300
         self.ntimesteps = 580
-        self.density = 0.4
+        self.density = 0.1    #0.03 free flow, #0.1 jam
         
         self.nvehicles = int(self.ncells * self.density) 
         
@@ -69,94 +69,93 @@ class KKW:
         
     def run(self):
 
-        for t in range(1, self.ntimesteps):
+        for t in range(0, self.ntimesteps-1):
             xi = rnd.random()
             for i in range(self.nvehicles):
-                b = self.x[i][t][0]
-                if self.x[i][t-1][0] == (self.nvehicles+1):
-                    self.v[i][t][0] = self.nvehicles+1
-                    self.v[i][t][1] = self.vmax
-                    self.x[i][t][0] = self.nvehicles+1
-                    self.x[i][t][1] = self.ncells
+                order = self.x[i][t][0]
+                if order == (self.nvehicles+1):
+                    self.v[i][t+1][0] = self.nvehicles+1
+                    self.v[i][t+1][1] = self.vmax
+                    self.x[i][t+1][0] = self.nvehicles+1
+                    self.x[i][t+1][1] = self.ncells
                 else: 
-                    j = self.v[i][t-1][0] + 1
+                    leading_order = int(self.x[i][t][0]) + 1
                     leading_idx = -2
                     for idx in range(self.nvehicles):
-                        if self.v[idx][t-1][0] == j:
+                        if int(self.x[idx][t][0]) == leading_order:
                             leading_idx = idx
-                    if leading_idx == -2:
-                        vleading = self.vmax
-                    else:
-                        vleading = self.v[leading_idx][t-1][1]
-                     
                             
-                    if self.v[i][t-1][1] < vleading:
-                        self.dacc = int(self.a)
-                    if self.v[i][t-1][1] == vleading:
-                        self.dacc = 0
-                    if self.v[i][t-1][1] > vleading:
-                        self.dacc = -1 * int(self.b)
-                        
-                    j = self.x[i][t-1][0] + 1
-                    leading_idx = -2
-                    for idx in range(self.nvehicles):
-                        if self.x[idx][t-1][0] == j:
-                            leading_idx = idx
                     if leading_idx == -2:
-                        self.sgap[i,t-1] = self.vmax
-                        print("i",i)
-                        print("j",j)
+                        vleading = int(self.vmax)
+                        self.sgap[i,t] = int(self.ncells)
+                        print("no leading for i",i)
+                        if leading_order != self.nvehicles:
+                            print("j",leading_order)
                     else:
-                        self.sgap[i,t-1] = self.x[leading_idx][t-1][1] - self.x[i][t-1][1] - 1
-                        
-                    gap = self.sgap[i,t-1]
+                        vleading = int(self.v[leading_idx][t][1])
+                        self.sgap[i,t] = int(self.x[leading_idx][t][1]) - int(self.x[i][t][1]) - 1
+                     
+                    gap = int(self.sgap[i,t])
+                            
+                    if self.v[i][t][1] < vleading:
+                        self.dacc = int(self.a)
+                    if self.v[i][t][1] == vleading:
+                        self.dacc = 0
+                    if self.v[i][t][1] > vleading:
+                        self.dacc = -1 * int(self.b)
+
+                    
                     if gap < 0 and t<10:
                         print("gap",gap,
                             "time:",t,"id:",i,"leading",leading_idx,
-                              "position",self.x[i][t-1][1] ,self.x[leading_idx][t-1][1],
-                              "order:",self.x[i][t-1][0],self.x[leading_idx][t-1][0],
-                              "position:",self.x[i][t-2][1],self.x[leading_idx][t-2][1],
-                              "speed",self.v[i][t-2][1],self.v[leading_idx][t-2][1],
-                              "pgap:",self.sgap[i,t-2],
-                              "porder:",self.x[i][t-2][0],self.x[leading_idx][t-2][0],
+                              "position",self.x[i][t][1] ,self.x[leading_idx][t][1],
+                              "order:",self.x[i][t][0],self.x[leading_idx][t][0],
+                              "pposition:",self.x[i][t-1][1],self.x[leading_idx][t-1][1],
+                              "pspeed",self.v[i][t-1][1],self.v[leading_idx][t-1][1],
+                              "pgap:",self.sgap[i,t-1],
+                              "porder:",self.x[i][t-1][0],self.x[leading_idx][t-1][0],
                               )
-                    self.D = self.D0 + self.D1 * self.v[i][t-1][1]
-                    if self.sgap[i,t-1] > (self.D - self.l):
-                        self.vdes = self.v[i][t-1][1] + self.a
-                    if self.sgap[i,t-1] <= (self.D - self.l):
-                        self.vdes = self.v[i][t-1][1] + self.dacc
+                    self.D = self.D0 + self.D1 * self.v[i][t][1]
+                    if gap > (self.D - self.l):
+                        self.vdes = self.v[i][t][1] + self.a
+                    if gap <= (self.D - self.l):
+                        self.vdes = self.v[i][t][1] + self.dacc
                    
-                    self.v[i][t][1] = max(0, min(self.vmax,self.sgap[i,t-1],self.vdes))
+                    vfuture = max(0, min(self.vmax,gap,self.vdes))
                     
-                    if self.v[i][t][1] < self.vp:
+                    if vfuture < self.vp:
                         self.pa = self.pa1
-                    if self.v[i][t][1] >= self.vp:
+                    if vfuture >= self.vp:
                         self.pa = self.pa2
                         
-                    if self.v[i][t][1] == 0:
+                    if vfuture == 0:
                         self.pb = self.p0
-                    if self.v[i][t][1] > 0:
+                    if vfuture > 0:
                         self.pb = self.pd
                     
     
                     if xi < self.pa:
-                        eta = self.a
+                        eta = int(self.a)
                     elif self.pa <= xi and xi < self.pa + self.pb:
-                       eta = -self.b 
+                       eta = -1 * int(self.b) 
                     elif xi >= (self.pa + self.pb):
                        eta = 0
                        
-                    self.v[i][t][1] = max(0, min(self.vmax,self.v[i][t-1][1] + eta, self.v[i][t-1][1] + self.a, int(self.sgap[i,t-1])))
-                    self.x[i][t][1] = self.x[i][t-1][1] + self.v[i][t][1]
+                    self.v[i][t+1][1] = max(0, min(self.vmax,self.v[i][t][1] + eta, self.v[i][t][1] + self.a, gap))
+                    self.x[i][t+1][1] = int(self.x[i][t][1]) + int(self.v[i][t+1][1])
+                    self.v[i][t+1][0] = int(self.v[i][t][0])
+                    self.x[i][t+1][0] = int(self.x[i][t][0])
                     
-                    if self.x[i][t][1] > self.ncells:
+                    xfuture = int(self.x[i][t+1][1])
+                    
+                    if xfuture > self.ncells:
                         # Add the vehicle that moved beyond the last position of the road to the queue
                         self.queue.append(i)
                         print("time",t,"i",i)
-                        self.v[i][t][0] = self.nvehicles+1
-                        self.v[i][t][1] = self.vmax
-                        self.x[i][t][0] = self.nvehicles+1
-                        self.x[i][t][1] = self.ncells
+                        self.v[i][t+1][0] = self.nvehicles+1
+                        self.v[i][t+1][1] = self.vmax
+                        self.x[i][t+1][0] = self.nvehicles+1
+                        self.x[i][t+1][1] = self.ncells
                     # Remove the vehicle 
                     # self.x = np.delete(self.x, i, axis=0)
                     # self.v = np.delete(self.v, i, axis=0)
@@ -178,10 +177,10 @@ class KKW:
                     #idx_list = [row[0] for row in (row[t] for row in self.x)]
                     for j in range(self.nvehicles):
                         if j not in self.queue :
-                            self.x[j][t+1][0] = int(self.x[j][t][0]) + 1
-                            self.v[j][t+1][0] = int(self.v[j][t][0]) + 1
-                    self.x[waiting_vehicle][t][1] = 1
-                    self.v[waiting_vehicle][t][1] = int(self.vmax)
+                            self.x[j][t+1][0] = int(self.x[j][t+1][0]) + 1
+                            self.v[j][t+1][0] = int(self.v[j][t+1][0]) + 1
+                    self.x[waiting_vehicle][t+1][1] = 1
+                    self.v[waiting_vehicle][t+1][1] = int(self.vmax)
                     self.x[waiting_vehicle][t+1][0] = 0
                     self.v[waiting_vehicle][t+1][0] = 0
 
