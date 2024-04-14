@@ -12,12 +12,12 @@ import matplotlib.cm as cm
 from collections import deque
 
 class KKW:
-    def __init__(self):
+    def __init__(self,density):
         self.D0 = 15
         self.D1 = 2.55
         self.a = self.b = 1
-        self.vp = 7
-        self.pa1 = 0.2
+        self.vp = 4
+        self.pa1 = 0.7
         self.pa2 = 0.052
         self.p0 = 0.425
         self.pd = 0.04
@@ -27,8 +27,8 @@ class KKW:
         self.dx = 0.5 #m
         
         self.ncells = 300
-        self.ntimesteps = 580
-        self.density = 0.1    #0.03 free flow, #0.1 jam
+        self.ntimesteps = 600
+        self.density = density    #0.03 free flow, #0.1 jam
         
         self.nvehicles = int(self.ncells * self.density) 
         
@@ -39,6 +39,10 @@ class KKW:
 
         self.pa = 0
         self.pb = 0
+        
+        self.global_flow_data = []
+        self.local_flow_data = [] 
+        self.local_density_data = [] 
         
         self.v = []
         for i in range(self.nvehicles):
@@ -51,7 +55,6 @@ class KKW:
         for j in range(self.nvehicles):
             self.v[j][0][1] = self.vmax
         
-        #self.x = np.zeros((self.nvehicles,self.ntimesteps))
         self.x = []
         for i in range(self.nvehicles):
             sublist = []
@@ -69,7 +72,16 @@ class KKW:
         
     def run(self):
 
+        rnd.seed(42)
+        total_speed = 0
+        checkpoints = [50, 299] 
         for t in range(0, self.ntimesteps-1):
+            
+            if t % 45 == 0:#self.ncells/3/self.vmax
+                total_vehicles1 = 0
+                total_speed1 = 0
+                total_vehicles2 = 0
+                total_speed2 = 0
             xi = rnd.random()
             for i in range(self.nvehicles):
                 order = self.x[i][t][0]
@@ -88,9 +100,6 @@ class KKW:
                     if leading_idx == -2:
                         vleading = int(self.vmax)
                         self.sgap[i,t] = int(self.ncells)
-                        print("no leading for i",i)
-                        if leading_order != self.nvehicles:
-                            print("j",leading_order)
                     else:
                         vleading = int(self.v[leading_idx][t][1])
                         self.sgap[i,t] = int(self.x[leading_idx][t][1]) - int(self.x[i][t][1]) - 1
@@ -148,33 +157,70 @@ class KKW:
                     
                     xfuture = int(self.x[i][t+1][1])
                     
+                    total_speed += self.v[i][t+1][1]
                     if xfuture > self.ncells:
                         # Add the vehicle that moved beyond the last position of the road to the queue
                         self.queue.append(i)
-                        print("time",t,"i",i)
+                        
                         self.v[i][t+1][0] = self.nvehicles+1
                         self.v[i][t+1][1] = self.vmax
                         self.x[i][t+1][0] = self.nvehicles+1
                         self.x[i][t+1][1] = self.ncells
-                    # Remove the vehicle 
-                    # self.x = np.delete(self.x, i, axis=0)
-                    # self.v = np.delete(self.v, i, axis=0)
-                    # self.sgap = np.delete(self.sgap, i, axis=0)
                         
+                  ####### WAY 1 ########## Just count moving vehicles
+                # if self.x[i][t+1][1] >= checkpoints[1] and self.x[i][t][1] < checkpoints[1] :       
+                #     total_vehicles1 += 1
+                    #total_speed1 += (1/self.v[i][t+1][1])
                     
+                    ####### WAY 2 ###### 
+                if self.x[i][t+1][1] >= checkpoints[1]  and self.x[i][t+1][1] < (checkpoints[1] + 5) and self.x[i][t+1][1] > (self.x[i][t][1] + 0.1) :  
+                    total_speed1 += self.v[i][t+1][1]
+                    total_vehicles1 += 1
+      
+                    ####### WAY 1 ########## Just count moving vehicles
+                # if self.x[i][t+1][1] >= checkpoints[0] and self.x[i][t][1] < checkpoints[0] :       
+                #     total_vehicles2 += 1
+                    #total_speed2 += (1/self.v[i][t+1][1])
+                    
+                    ####### WAY 2 ###### counts stopped vehicles too
+                if self.x[i][t+1][1] >= checkpoints[0]  and self.x[i][t+1][1] < (checkpoints[0] + 5) :  
+                    total_speed2 += self.v[i][t+1][1]
+                    total_vehicles2 += 1
+                                           
+            
+
+            if (t + 1)%45 == 0 and total_speed1> 0 and total_vehicles1>0 :
+                ####### WAY 1 ##########
+                # flow = total_vehicles1/45
+                # meanspeed = total_vehicles1/total_speed1
+                # density = flow / meanspeed
+
+                ####### WAY 2 ######
+                density = total_vehicles1 / 225
+                flow = total_speed1 / 225
+
+                self.local_flow_data.append(flow)
+                self.local_density_data.append(density)
+
+            if (t + 1)%45 == 0 and total_speed2> 0 and total_vehicles2>0 :
+                ####### WAY 1 ##########
+                # flow = total_vehicles2/45
+                # meanspeed = total_vehicles2/total_speed2
+                # density = flow / meanspeed
                 
+                ####### WAY 2 ######
+                density = total_vehicles2/ 225
+                flow = total_speed2 / 225
+                
+                self.local_flow_data.append(flow)
+                self.local_density_data.append(density)
+            
             if not any(row[1] == 1 for row in (row[t] for row in self.x)):  # Check if position 1 is free
                 if self.queue:  # Check if there are vehicles in the queue
                     
                     # Dequeue the first vehicle in the queue
                     waiting_vehicle = self.queue.popleft()
-                    print("waiting_vehicle",waiting_vehicle)
-                    # Insert the waiting vehicle at the beginning of x
-                    # self.x = np.insert(self.x, 0, np.zeros(self.ntimesteps), axis=0)
-                    # self.v = np.insert(self.v, 0, np.zeros(self.ntimesteps), axis=0)
-                    # self.sgap = np.insert(self.sgap, 0, np.zeros(self.ntimesteps), axis=0)
-                    # Place the vehicle at position 1 with random speed between 0 and 
-                    #idx_list = [row[0] for row in (row[t] for row in self.x)]
+                    #print("waiting_vehicle",waiting_vehicle)
                     for j in range(self.nvehicles):
                         if j not in self.queue :
                             self.x[j][t+1][0] = int(self.x[j][t+1][0]) + 1
@@ -184,7 +230,9 @@ class KKW:
                     self.x[waiting_vehicle][t+1][0] = 0
                     self.v[waiting_vehicle][t+1][0] = 0
 
-
+        global_mean_speed = total_speed / (self.nvehicles * self.ntimesteps)
+        global_flow = global_mean_speed * self.density
+        print("flow",global_flow,"density",self.density)
 
                 
         return
@@ -240,10 +288,6 @@ class KKW:
         
         # Plotting
         for i in range(self.nvehicles):
-            print(self.x[i][100][1])
-            print(self.x[i][101][1])
-            print(self.v[i][100][1])
-            print(self.v[i][101][1])
             normalized_speeds =  [self.v[i][t][1] / self.vmax for t in range(self.ntimesteps) ]
             #normalized_speeds = self.v[i] / self.vmax
             colors = reversed_cmap(normalized_speeds)
@@ -275,8 +319,36 @@ class KKW:
              plt.legend()
              plt.grid(True)
              plt.show()
+             
+    def plot_flow_vs_density(self, densities):
+        flow_counts = [[] for _ in range(len(densities))]
+        density_counts = [[] for _ in range(len(densities))]
+        
+        for idx, density in enumerate(densities):
+            self.__init__(density)
+            self.run()
+            flow_counts[idx] = self.local_flow_data  # Assign flow data to the corresponding density index
+            density_counts[idx] = self.local_density_data
+        # self.__init__(0.3)
+        # self.run()    
+        # flow_counts = self.local_flow_data  # Assign flow data to the corresponding density index
+        # density_counts = self.local_density_data
+            
+        # Plotting
+        for idx, density in enumerate(densities):
+            #plt.scatter([density] * len(flow_counts[idx]), flow_counts[idx], marker='.', s=4)
+            plt.scatter(density_counts[idx], flow_counts[idx], marker='.', s=4)
+            
+        plt.xlabel('Density')
+        plt.ylabel('Flow')
+        plt.title('Flow vs Density')
+        plt.grid(True)
+        plt.show()
 
 if __name__ == "__main__":
-    kkw_instance = KKW()
+    densities = np.arange(0.01, 1, 0.1)
+    kkw_instance = KKW(0.3)
     kkw_instance.run()
     kkw_instance.plot_all()
+    kkw_instance.plot_flow_vs_density(densities)
+
