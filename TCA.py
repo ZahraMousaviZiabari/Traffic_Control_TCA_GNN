@@ -10,15 +10,17 @@ import random as rnd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from collections import deque
+from collections import Counter
+import math
 
 class KKW:
     def __init__(self,density):
-        self.D0 = 15
-        self.D1 = 2.55
+        self.D0 = 2
+        self.D1 = 2
         self.a = self.b = 1
         self.vp = 4
-        self.pa1 = 0.7
-        self.pa2 = 0.052
+        self.pa1 = 0.8
+        self.pa2 = 0.15
         self.p0 = 0.425
         self.pd = 0.04
         self.vmax = 5 # cells/timestep
@@ -27,7 +29,7 @@ class KKW:
         self.dx = 0.5 #m
         
         self.ncells = 300
-        self.ntimesteps = 600
+        self.ntimesteps = 401
         self.density = density    #0.03 free flow, #0.1 jam
         
         self.nvehicles = int(self.ncells * self.density) 
@@ -43,6 +45,9 @@ class KKW:
         self.global_flow_data = []
         self.local_flow_data = [] 
         self.local_density_data = [] 
+        self.local_phase_data = []
+        
+        self.vehicles_phase = np.ones((self.nvehicles,self.ntimesteps))
         
         self.v = []
         for i in range(self.nvehicles):
@@ -62,26 +67,42 @@ class KKW:
                 sublist.append([i, 0])
             self.x.append(sublist)
      
-        random_numbers = rnd.sample(range(1, self.ncells), self.nvehicles)
-        random_numbers = sorted(random_numbers)
-        for j in range(self.nvehicles):
-           self.x[j][0][1] = random_numbers[j]
+        if self.ncells == self.nvehicles:
+            for j in range(self.nvehicles):
+               self.x[j][0][1] = j
+        else:
+            random_numbers = rnd.sample(range(1, self.ncells), self.nvehicles)
+            random_numbers = sorted(random_numbers)
+            for j in range(self.nvehicles):
+               self.x[j][0][1] = random_numbers[j]
            
         # Initialize queue for vehicles waiting to enter the road
         self.queue = deque()
+    
+    def most_common_element(self,lst):
+        counts = Counter(lst)
+        max_count = max(counts.values())
+        return [num for num, count in counts.items() if count == max_count]
         
+    
     def run(self):
 
         rnd.seed(42)
         total_speed = 0
-        checkpoints = [50, 299] 
+        checkpoints = [50, 200, 255]
+        phase = [1,2,3] #1: free, 2: synchronized 3:moving jam
         for t in range(0, self.ntimesteps-1):
             
-            if t % 45 == 0:#self.ncells/3/self.vmax
+            if t % 20 == 0:#self.ncells/3/self.vmax
                 total_vehicles1 = 0
-                total_speed1 = 0
                 total_vehicles2 = 0
+                total_vehicles3 = 0
+                total_speed1 = 0
                 total_speed2 = 0
+                total_speed3 = 0
+                mean_phase1 = []
+                mean_phase2 = []
+                mean_phase3 = []
             xi = rnd.random()
             for i in range(self.nvehicles):
                 order = self.x[i][t][0]
@@ -90,6 +111,7 @@ class KKW:
                     self.v[i][t+1][1] = self.vmax
                     self.x[i][t+1][0] = self.nvehicles+1
                     self.x[i][t+1][1] = self.ncells
+                    self.vehicles_phase[i,t+1] = 1
                 else: 
                     leading_order = int(self.x[i][t][0]) + 1
                     leading_idx = -2
@@ -131,6 +153,13 @@ class KKW:
                         self.vdes = self.v[i][t][1] + self.dacc
                    
                     vfuture = max(0, min(self.vmax,gap,self.vdes))
+                    min_value = min(self.vmax,gap,self.vdes)
+                    if min_value == self.vmax:
+                        self.vehicles_phase[i,t+1] = 1
+                    elif min_value == gap:
+                        self.vehicles_phase[i,t+1] = 3
+                    else:
+                        self.vehicles_phase[i,t+1] = 2
                     
                     if vfuture < self.vp:
                         self.pa = self.pa1
@@ -156,8 +185,8 @@ class KKW:
                     self.x[i][t+1][0] = int(self.x[i][t][0])
                     
                     xfuture = int(self.x[i][t+1][1])
-                    
-                    total_speed += self.v[i][t+1][1]
+                    if t < 10:
+                        total_speed += self.v[i][t+1][1]
                     if xfuture > self.ncells:
                         # Add the vehicle that moved beyond the last position of the road to the queue
                         self.queue.append(i)
@@ -168,52 +197,89 @@ class KKW:
                         self.x[i][t+1][1] = self.ncells
                         
                   ####### WAY 1 ########## Just count moving vehicles
-                # if self.x[i][t+1][1] >= checkpoints[1] and self.x[i][t][1] < checkpoints[1] :       
+                # if self.x[i][t+1][1] >= checkpoints[0] and self.x[i][t][1] < checkpoints[0] :       
                 #     total_vehicles1 += 1
-                    #total_speed1 += (1/self.v[i][t+1][1])
+                #     total_speed1 += (1/self.v[i][t+1][1])
                     
                     ####### WAY 2 ###### 
-                if self.x[i][t+1][1] >= checkpoints[1]  and self.x[i][t+1][1] < (checkpoints[1] + 5) and self.x[i][t+1][1] > (self.x[i][t][1] + 0.1) :  
+                if self.x[i][t+1][1] >= checkpoints[0]  and self.x[i][t+1][1] < (checkpoints[0] + 5):
                     total_speed1 += self.v[i][t+1][1]
                     total_vehicles1 += 1
-      
-                    ####### WAY 1 ########## Just count moving vehicles
-                # if self.x[i][t+1][1] >= checkpoints[0] and self.x[i][t][1] < checkpoints[0] :       
+                    mean_phase1.append(self.vehicles_phase[i,t+1]) 
+                        
+                  ####### WAY 1 ########## Just count moving vehicles
+                # if self.x[i][t+1][1] >= checkpoints[1] and self.x[i][t][1] < checkpoints[1] :       
                 #     total_vehicles2 += 1
-                    #total_speed2 += (1/self.v[i][t+1][1])
+                #     total_speed2 += (1/self.v[i][t+1][1])
                     
-                    ####### WAY 2 ###### counts stopped vehicles too
-                if self.x[i][t+1][1] >= checkpoints[0]  and self.x[i][t+1][1] < (checkpoints[0] + 5) :  
+                    ####### WAY 2 ###### 
+                if self.x[i][t+1][1] >= checkpoints[1]  and self.x[i][t+1][1] < (checkpoints[1] + 5):  
                     total_speed2 += self.v[i][t+1][1]
                     total_vehicles2 += 1
+                    mean_phase2.append(self.vehicles_phase[i,t+1])
+
+                    ####### WAY 1 ########## Just count moving vehicles
+                # if self.x[i][t+1][1] >= checkpoints[2] and self.x[i][t][1] < checkpoints[2] :       
+                #     total_vehicles3 += 1
+                #     total_speed3 += (1/self.v[i][t+1][1])
+                    
+                    ####### WAY 2 ###### counts stopped vehicles too
+                if self.x[i][t+1][1] >= checkpoints[2]  and self.x[i][t+1][1] < (checkpoints[2] + 5) :   #and self.x[i][t+1][1] > (self.x[i][t][1] + 0.1) :
+                    total_speed3 += self.v[i][t+1][1]
+                    total_vehicles3 += 1
+                    mean_phase3.append(self.vehicles_phase[i,t+1])
                                            
             
 
-            if (t + 1)%45 == 0 and total_speed1> 0 and total_vehicles1>0 :
+            if (t + 1)%20 == 0 and total_speed1> 0 and total_vehicles1>0 :
                 ####### WAY 1 ##########
-                # flow = total_vehicles1/45
+                # flow = total_vehicles1/20
                 # meanspeed = total_vehicles1/total_speed1
-                # density = flow / meanspeed
+                # local_density = flow / meanspeed
 
                 ####### WAY 2 ######
-                density = total_vehicles1 / 225
-                flow = total_speed1 / 225
+                local_density = total_vehicles1 / 100
+                flow = total_speed1 / 100
+                
+                #mean_phase =  round(mean_phase1 / total_vehicles1)
+                mean_phase = self.most_common_element(mean_phase1)
 
                 self.local_flow_data.append(flow)
-                self.local_density_data.append(density)
+                self.local_density_data.append(local_density)
+                self.local_phase_data.append(mean_phase[0])
 
-            if (t + 1)%45 == 0 and total_speed2> 0 and total_vehicles2>0 :
+            if (t + 1)%20 == 0 and total_speed2> 0 and total_vehicles2>0 :
                 ####### WAY 1 ##########
-                # flow = total_vehicles2/45
+                # flow = total_vehicles2/20
                 # meanspeed = total_vehicles2/total_speed2
-                # density = flow / meanspeed
+                # local_density = flow / meanspeed
                 
                 ####### WAY 2 ######
-                density = total_vehicles2/ 225
-                flow = total_speed2 / 225
+                local_density = total_vehicles2/ 100
+                flow = total_speed2 / 100
+                #mean_phase =  round(mean_phase2 / total_vehicles2)
+                mean_phase = self.most_common_element(mean_phase2)
+
                 
                 self.local_flow_data.append(flow)
-                self.local_density_data.append(density)
+                self.local_density_data.append(local_density)
+                self.local_phase_data.append(mean_phase[0])
+                
+            if (t + 1)%20 == 0 and total_speed3> 0 and total_vehicles3>0 :
+                ####### WAY 1 ##########
+                # flow = total_vehicles3/20
+                # meanspeed = total_vehicles3/total_speed3
+                # local_density = flow / meanspeed
+                
+                ####### WAY 2 ######
+                local_density = total_vehicles3/ 100
+                flow = total_speed3 / 100
+                #mean_phase =  round(mean_phase3 / total_vehicles3)
+                mean_phase = self.most_common_element(mean_phase3)
+                
+                self.local_flow_data.append(flow)
+                self.local_density_data.append(local_density)
+                self.local_phase_data.append(mean_phase[0])
             
             if not any(row[1] == 1 for row in (row[t] for row in self.x)):  # Check if position 1 is free
                 if self.queue:  # Check if there are vehicles in the queue
@@ -230,8 +296,10 @@ class KKW:
                     self.x[waiting_vehicle][t+1][0] = 0
                     self.v[waiting_vehicle][t+1][0] = 0
 
-        global_mean_speed = total_speed / (self.nvehicles * self.ntimesteps)
-        global_flow = global_mean_speed * self.density
+        #global_mean_speed = total_speed / (self.nvehicles * self.ntimesteps)
+        #global_flow = global_mean_speed * self.density
+        global_flow = total_speed/(self.ncells*10)
+        self.global_flow_data.append(global_flow)
         print("flow",global_flow,"density",self.density)
 
                 
@@ -239,8 +307,9 @@ class KKW:
     
     def global_density(self):
         return
-    
-    def plot_all(self):
+
+    def plot_position_vs_time(self):
+         
         time = np.arange(self.ntimesteps)
     
         # Extract positions from the nested list
@@ -272,6 +341,33 @@ class KKW:
         plt.legend()
         plt.grid(True)
         plt.savefig("PositionVSTime.pdf", bbox_inches="tight")
+        plt.show()
+        
+        
+    def plot_position_vs_time_colored(self):
+         
+        time = np.arange(self.ntimesteps)
+        colors = np.ndarray.flatten(self.vehicles_phase)
+    
+        # Extract positions from the nested list
+        flattened_positions = [x[1] for sublist in self.x for x in sublist]
+      
+        # Create an array of time values corresponding to each position
+        time_repeated = np.tile(time, len(self.x))
+        
+        # Map phase integers to colors
+        color_mapping = {1: 'blue', 2: 'green', 3: 'red'}
+        phase_colors = [color_mapping[phase] for phase in colors]
+        
+        # Use the mapped colors in the scatter plot
+        plt.scatter(time_repeated, flattened_positions, marker='.', c=phase_colors, s=4)
+        
+       
+        plt.xlabel('Time')
+        plt.ylabel('Position')
+        plt.title('Position vs Time (Colored by Phase)')
+        plt.grid(True)
+        plt.savefig("PositionVSTime_colored.pdf", bbox_inches="tight")
         plt.show()
 
         
@@ -323,22 +419,24 @@ class KKW:
     def plot_flow_vs_density(self, densities):
         flow_counts = [[] for _ in range(len(densities))]
         density_counts = [[] for _ in range(len(densities))]
+        phase_colors = {1: 'blue', 2: 'green', 3: 'red'}  # Define colors for each phase
+        phase_markers = {1: 'o', 2: 's', 3: '^'}  # Define marker styles for each phase
+        global_flow = []
         
         for idx, density in enumerate(densities):
             self.__init__(density)
             self.run()
-            flow_counts[idx] = self.local_flow_data  # Assign flow data to the corresponding density index
+            flow_counts[idx] = self.local_flow_data
             density_counts[idx] = self.local_density_data
-        # self.__init__(0.3)
-        # self.run()    
-        # flow_counts = self.local_flow_data  # Assign flow data to the corresponding density index
-        # density_counts = self.local_density_data
+            phases = self.local_phase_data  # Fetch phase data
+            global_flow.append(self.global_flow_data)
             
-        # Plotting
-        for idx, density in enumerate(densities):
-            #plt.scatter([density] * len(flow_counts[idx]), flow_counts[idx], marker='.', s=4)
-            plt.scatter(density_counts[idx], flow_counts[idx], marker='.', s=4)
-            
+            for i in range(len(phases)):
+                # Plot each point with corresponding shape and color based on phase
+                plt.scatter(density_counts[idx][i], flow_counts[idx][i], marker=phase_markers[int(phases[i])], color=phase_colors[int(phases[i])], s=5)
+        
+        plt.plot(densities, global_flow, color='black', label='Global Flow')
+                      
         plt.xlabel('Density')
         plt.ylabel('Flow')
         plt.title('Flow vs Density')
@@ -346,9 +444,10 @@ class KKW:
         plt.show()
 
 if __name__ == "__main__":
-    densities = np.arange(0.01, 1, 0.1)
-    kkw_instance = KKW(0.3)
+    densities = np.arange(0.01, 1, 0.01)
+    kkw_instance = KKW(0.1)
     kkw_instance.run()
-    kkw_instance.plot_all()
-    kkw_instance.plot_flow_vs_density(densities)
+    kkw_instance.plot_position_vs_time()
+    #kkw_instance.plot_position_vs_time_colored()
+    #kkw_instance.plot_flow_vs_density(densities)
 
