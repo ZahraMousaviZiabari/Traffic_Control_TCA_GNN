@@ -85,15 +85,17 @@ class KKW:
         return [num for num, count in counts.items() if count == max_count]
         
     
-    def run(self):
+    def run(self,LMeasureFormula):
 
         rnd.seed(42)
         total_speed = 0
         checkpoints = [50, 200, 255]
         phase = [1,2,3] #1: free, 2: synchronized 3:moving jam
+        Tmp = 20 #measurement period
+        K1d = 5  #segment length
         for t in range(0, self.ntimesteps-1):
             
-            if t % 20 == 0:#self.ncells/3/self.vmax
+            if t % Tmp == 0:
                 total_vehicles1 = 0
                 total_vehicles2 = 0
                 total_vehicles3 = 0
@@ -136,7 +138,8 @@ class KKW:
                         self.dacc = -1 * int(self.b)
 
                     
-                    if gap < 0 and t<10:
+                    if gap < 0 and t < 10:   
+                        print("Error: Negative Gap!")
                         print("gap",gap,
                             "time:",t,"id:",i,"leading",leading_idx,
                               "position",self.x[i][t][1] ,self.x[leading_idx][t][1],
@@ -155,11 +158,11 @@ class KKW:
                     vfuture = max(0, min(self.vmax,gap,self.vdes))
                     min_value = min(self.vmax,gap,self.vdes)
                     if min_value == self.vmax:
-                        self.vehicles_phase[i,t+1] = 1
+                        self.vehicles_phase[i,t+1] = phase[0]
                     elif min_value == gap:
-                        self.vehicles_phase[i,t+1] = 3
+                        self.vehicles_phase[i,t+1] = phase[2]
                     else:
-                        self.vehicles_phase[i,t+1] = 2
+                        self.vehicles_phase[i,t+1] = phase[1]
                     
                     if vfuture < self.vp:
                         self.pa = self.pa1
@@ -185,7 +188,7 @@ class KKW:
                     self.x[i][t+1][0] = int(self.x[i][t][0])
                     
                     xfuture = int(self.x[i][t+1][1])
-                    if t < 10:
+                    if t < 10:  # For computing global flow
                         total_speed += self.v[i][t+1][1]
                     if xfuture > self.ncells:
                         # Add the vehicle that moved beyond the last position of the road to the queue
@@ -196,50 +199,57 @@ class KKW:
                         self.x[i][t+1][0] = self.nvehicles+1
                         self.x[i][t+1][1] = self.ncells
                         
-                  ####### WAY 1 ########## Just count moving vehicles
-                # if self.x[i][t+1][1] >= checkpoints[0] and self.x[i][t][1] < checkpoints[0] :       
-                #     total_vehicles1 += 1
-                #     total_speed1 += (1/self.v[i][t+1][1])
-                    
-                    ####### WAY 2 ###### 
-                if self.x[i][t+1][1] >= checkpoints[0]  and self.x[i][t+1][1] < (checkpoints[0] + 5):
-                    total_speed1 += self.v[i][t+1][1]
-                    total_vehicles1 += 1
-                    mean_phase1.append(self.vehicles_phase[i,t+1]) 
+                ######### Local Measurements ############
+                #detector1
+                if LMeasureFormula == 1: # Segment detector counts stopped vehicles too
+                    if self.x[i][t+1][1] >= checkpoints[0]  and self.x[i][t+1][1] < (checkpoints[0] + 5):
+                        total_speed1 += self.v[i][t+1][1]
+                        total_vehicles1 += 1
+                        mean_phase1.append(self.vehicles_phase[i,t+1]) 
                         
-                  ####### WAY 1 ########## Just count moving vehicles
-                # if self.x[i][t+1][1] >= checkpoints[1] and self.x[i][t][1] < checkpoints[1] :       
-                #     total_vehicles2 += 1
-                #     total_speed2 += (1/self.v[i][t+1][1])
-                    
-                    ####### WAY 2 ###### 
-                if self.x[i][t+1][1] >= checkpoints[1]  and self.x[i][t+1][1] < (checkpoints[1] + 5):  
-                    total_speed2 += self.v[i][t+1][1]
-                    total_vehicles2 += 1
-                    mean_phase2.append(self.vehicles_phase[i,t+1])
+                if LMeasureFormula == 2: # unit length detector just counts moving vehicles       
+                    if self.x[i][t+1][1] >= checkpoints[0] and self.x[i][t][1] < checkpoints[0] :       
+                        total_vehicles1 += 1
+                        total_speed1 += (1/self.v[i][t+1][1])
+                        mean_phase1.append(self.vehicles_phase[i,t+1]) 
+                        
+                #detector2
+                if LMeasureFormula == 1: # Segment detector counts stopped vehicles too
+                    if self.x[i][t+1][1] >= checkpoints[1]  and self.x[i][t+1][1] < (checkpoints[1] + 5):  
+                        total_speed2 += self.v[i][t+1][1]
+                        total_vehicles2 += 1
+                        mean_phase2.append(self.vehicles_phase[i,t+1])
+                        
+                if LMeasureFormula == 2: # unit length detector just counts moving vehicles
+                    if self.x[i][t+1][1] >= checkpoints[1] and self.x[i][t][1] < checkpoints[1] :       
+                        total_vehicles2 += 1
+                        total_speed2 += (1/self.v[i][t+1][1])
+                        mean_phase2.append(self.vehicles_phase[i,t+1])
 
-                    ####### WAY 1 ########## Just count moving vehicles
-                # if self.x[i][t+1][1] >= checkpoints[2] and self.x[i][t][1] < checkpoints[2] :       
-                #     total_vehicles3 += 1
-                #     total_speed3 += (1/self.v[i][t+1][1])
-                    
-                    ####### WAY 2 ###### counts stopped vehicles too
-                if self.x[i][t+1][1] >= checkpoints[2]  and self.x[i][t+1][1] < (checkpoints[2] + 5) :   #and self.x[i][t+1][1] > (self.x[i][t][1] + 0.1) :
-                    total_speed3 += self.v[i][t+1][1]
-                    total_vehicles3 += 1
-                    mean_phase3.append(self.vehicles_phase[i,t+1])
-                                           
+                #detector3
+                if LMeasureFormula == 1: # Segment detector counts stopped vehicles too   
+                    if self.x[i][t+1][1] >= checkpoints[2]  and self.x[i][t+1][1] < (checkpoints[2] + 5) :   #and self.x[i][t+1][1] > (self.x[i][t][1] + 0.1) :
+                        total_speed3 += self.v[i][t+1][1]
+                        total_vehicles3 += 1
+                        mean_phase3.append(self.vehicles_phase[i,t+1])
+                        
+                if LMeasureFormula == 2: # unit length detector just counts moving vehicles
+                    if self.x[i][t+1][1] >= checkpoints[2] and self.x[i][t][1] < checkpoints[2] :       
+                        total_vehicles3 += 1
+                        total_speed3 += (1/self.v[i][t+1][1])
+                        mean_phase3.append(self.vehicles_phase[i,t+1])
+                                         
             
-
-            if (t + 1)%20 == 0 and total_speed1> 0 and total_vehicles1>0 :
-                ####### WAY 1 ##########
-                # flow = total_vehicles1/20
-                # meanspeed = total_vehicles1/total_speed1
-                # local_density = flow / meanspeed
-
-                ####### WAY 2 ######
-                local_density = total_vehicles1 / 100
-                flow = total_speed1 / 100
+            ## Flow and Density Computation for different detectors after Tmp
+            if (t + 1) % Tmp == 0 and total_speed1> 0 and total_vehicles1>0 :                
+                if LMeasureFormula == 1:
+                    local_density = total_vehicles1 / (Tmp*K1d)
+                    flow = total_speed1 / (Tmp*K1d)
+                    
+                if LMeasureFormula == 2:
+                    flow = total_vehicles1/Tmp
+                    meanspeed = total_vehicles1/total_speed1
+                    local_density = flow / meanspeed
                 
                 #mean_phase =  round(mean_phase1 / total_vehicles1)
                 mean_phase = self.most_common_element(mean_phase1)
@@ -248,39 +258,42 @@ class KKW:
                 self.local_density_data.append(local_density)
                 self.local_phase_data.append(mean_phase[0])
 
-            if (t + 1)%20 == 0 and total_speed2> 0 and total_vehicles2>0 :
-                ####### WAY 1 ##########
-                # flow = total_vehicles2/20
-                # meanspeed = total_vehicles2/total_speed2
-                # local_density = flow / meanspeed
+            if (t + 1) % Tmp == 0 and total_speed2> 0 and total_vehicles2>0 :              
+                if LMeasureFormula == 1:
+                    local_density = total_vehicles2/ (Tmp*K1d)
+                    flow = total_speed2 / (Tmp*K1d)
+                    
+                if LMeasureFormula == 2:
+                    flow = total_vehicles2/Tmp
+                    meanspeed = total_vehicles2/total_speed2
+                    local_density = flow / meanspeed
                 
-                ####### WAY 2 ######
-                local_density = total_vehicles2/ 100
-                flow = total_speed2 / 100
                 #mean_phase =  round(mean_phase2 / total_vehicles2)
                 mean_phase = self.most_common_element(mean_phase2)
-
-                
+              
                 self.local_flow_data.append(flow)
                 self.local_density_data.append(local_density)
                 self.local_phase_data.append(mean_phase[0])
                 
-            if (t + 1)%20 == 0 and total_speed3> 0 and total_vehicles3>0 :
-                ####### WAY 1 ##########
-                # flow = total_vehicles3/20
-                # meanspeed = total_vehicles3/total_speed3
-                # local_density = flow / meanspeed
+            if (t + 1) % Tmp == 0 and total_speed3> 0 and total_vehicles3>0 :               
+                if LMeasureFormula == 1:
+                    local_density = total_vehicles3/ (Tmp*K1d)
+                    flow = total_speed3 / (Tmp*K1d)
+                    
+                if LMeasureFormula == 2:
+                    flow = total_vehicles3/Tmp
+                    meanspeed = total_vehicles3/total_speed3
+                    local_density = flow / meanspeed
                 
-                ####### WAY 2 ######
-                local_density = total_vehicles3/ 100
-                flow = total_speed3 / 100
                 #mean_phase =  round(mean_phase3 / total_vehicles3)
                 mean_phase = self.most_common_element(mean_phase3)
                 
                 self.local_flow_data.append(flow)
                 self.local_density_data.append(local_density)
                 self.local_phase_data.append(mean_phase[0])
+            #############################################
             
+            #Entering vehicle from queue to road
             if not any(row[1] == 1 for row in (row[t] for row in self.x)):  # Check if position 1 is free
                 if self.queue:  # Check if there are vehicles in the queue
                     
@@ -416,7 +429,7 @@ class KKW:
              plt.grid(True)
              plt.show()
              
-    def plot_flow_vs_density(self, densities):
+    def plot_flow_vs_density(self, densities, LMeasureFormula):
         flow_counts = [[] for _ in range(len(densities))]
         density_counts = [[] for _ in range(len(densities))]
         phase_colors = {1: 'blue', 2: 'green', 3: 'red'}  # Define colors for each phase
@@ -425,7 +438,7 @@ class KKW:
         
         for idx, density in enumerate(densities):
             self.__init__(density)
-            self.run()
+            self.run(LMeasureFormula)
             flow_counts[idx] = self.local_flow_data
             density_counts[idx] = self.local_density_data
             phases = self.local_phase_data  # Fetch phase data
@@ -445,9 +458,10 @@ class KKW:
 
 if __name__ == "__main__":
     densities = np.arange(0.01, 1, 0.01)
-    kkw_instance = KKW(0.1)
-    kkw_instance.run()
+    LMeasureFormula = 2 #1: segment detectors, 2:unit length
+    kkw_instance = KKW(0.3)
+    kkw_instance.run(LMeasureFormula)
     kkw_instance.plot_position_vs_time()
-    #kkw_instance.plot_position_vs_time_colored()
-    #kkw_instance.plot_flow_vs_density(densities)
+    kkw_instance.plot_position_vs_time_colored()
+    kkw_instance.plot_flow_vs_density(densities, LMeasureFormula)
 
