@@ -12,6 +12,7 @@ import matplotlib.cm as cm
 from collections import deque
 from collections import Counter
 import math
+import TrafficGraph as TG
 
 class KKW:
     def __init__(self,density):
@@ -113,7 +114,7 @@ class KKW:
                     self.v[i][t+1][1] = self.vmax
                     self.x[i][t+1][0] = self.nvehicles+1
                     self.x[i][t+1][1] = self.ncells
-                    self.vehicles_phase[i,t+1] = 1
+                    self.vehicles_phase[i,t+1] = phase[0]
                 else: 
                     leading_order = int(self.x[i][t][0]) + 1
                     leading_idx = -2
@@ -127,9 +128,9 @@ class KKW:
                     else:
                         vleading = int(self.v[leading_idx][t][1])
                         self.sgap[i,t] = int(self.x[leading_idx][t][1]) - int(self.x[i][t][1]) - 1
-                     
+                   
                     gap = int(self.sgap[i,t])
-                            
+                         
                     if self.v[i][t][1] < vleading:
                         self.dacc = int(self.a)
                     if self.v[i][t][1] == vleading:
@@ -455,6 +456,10 @@ class KKW:
         plt.title('Flow vs Density')
         plt.grid(True)
         plt.show()
+        
+    def create_graph(self):
+        TG.generate_graph(self.x,self.v,self.vehicles_phase)
+        
 
 if __name__ == "__main__":
     densities = np.arange(0.01, 1, 0.01)
@@ -463,5 +468,6 @@ if __name__ == "__main__":
     kkw_instance.run(LMeasureFormula)
     kkw_instance.plot_position_vs_time()
     kkw_instance.plot_position_vs_time_colored()
-    kkw_instance.plot_flow_vs_density(densities, LMeasureFormula)
+    #kkw_instance.plot_flow_vs_density(densities, LMeasureFormula)
+    kkw_instance.create_graph()
 
