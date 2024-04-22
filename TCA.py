@@ -458,16 +458,17 @@ class KKW:
         plt.show()
         
     def create_graph(self):
-        TG.generate_graph(self.x,self.v,self.vehicles_phase)
+        TG.generate_graph(self.x,self.v,self.vehicles_phase,self.ncells)
         
 
 if __name__ == "__main__":
-    densities = np.arange(0.01, 1, 0.01)
+    densities = np.arange(0.01, 1, 0.1)
     LMeasureFormula = 2 #1: segment detectors, 2:unit length
-    kkw_instance = KKW(0.3)
-    kkw_instance.run(LMeasureFormula)
-    kkw_instance.plot_position_vs_time()
-    kkw_instance.plot_position_vs_time_colored()
+    for itr in densities:
+        kkw_instance = KKW(itr)
+        kkw_instance.run(LMeasureFormula)
+    #kkw_instance.plot_position_vs_time()
+    #kkw_instance.plot_position_vs_time_colored()
     #kkw_instance.plot_flow_vs_density(densities, LMeasureFormula)
-    kkw_instance.create_graph()
+        kkw_instance.create_graph()
 

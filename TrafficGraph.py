@@ -13,7 +13,7 @@ def most_common_element(lst):
     return [num for num, count in counts.items() if count == max_count]
     
 
-def generate_graph(x,v,vehicles_phase):
+def generate_graph(x,v,vehicles_phase,ncells):
     features = []
     edges = []
     labels = []
@@ -25,9 +25,9 @@ def generate_graph(x,v,vehicles_phase):
         features.append([])
         for i in range(nvehicles - 1):
             features[t].append(v[i][t+1][1])
-            for j in range(i + 1, nvehicles):
-                distance = x[j][t+1][1] - x[i][t+1][1]      
-                if abs(distance) <= 6:
+            for j in range(i, nvehicles): # graph with self-loop
+                distance = x[j][t+1][1] - x[i][t+1][1]  
+                if abs(distance) <= 6 and x[j][t+1][1] != int(ncells) and x[i][t+1][1] != int(ncells) :
                     edges[t].append(i)
                     edges[t].append(j)
         features[t].append(v[nvehicles-1][t+1][1])
@@ -38,7 +38,7 @@ def generate_graph(x,v,vehicles_phase):
     
     
 def save_data(features, edges, labels, file_path):
-    with open(file_path, 'w') as file:
+    with open(file_path, 'a') as file:
         for i in range(len(features)):
             # Convert features, edges, and label of each graph to strings
             feature_str = ','.join(map(str, features[i]))

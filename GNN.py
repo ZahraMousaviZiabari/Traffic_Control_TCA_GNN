@@ -2,10 +2,12 @@ import torch
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv, global_mean_pool
+from torch.nn import Linear
 from torch_geometric.loader import DataLoader
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
+import numpy as np
 
 
 
@@ -20,14 +22,9 @@ class GraphDataset(Dataset):
         graph = self.graph_data[idx]
         x = torch.tensor(graph['node_features'], dtype=torch.float).view(-1, 1)
         edge_index = torch.tensor(graph['edge_index'], dtype=torch.long).t().contiguous()
-        y = torch.tensor([graph['target'] - 1] * len(graph['node_features']), dtype=torch.long)
-        num_nodes = len(graph['node_features'])  # Get the number of features
-        num_features = 1
-        # Create a batch vector where each element corresponds to the graph index
-        batch = torch.zeros(num_nodes, dtype=torch.long)
-        data = Data(x=x, edge_index=edge_index, y=y, num_nodes=num_nodes, batch=batch)
-    
-        data.num_features = num_features  # Update the num_features attribute
+        y = torch.tensor(graph['target']-1, dtype=torch.long)
+        num_nodes = len(graph['node_features'])
+        data = Data(x=x, edge_index=edge_index, y=y)
         return data
     
     def load_data(self, data_file):
@@ -47,45 +44,60 @@ class GraphDataset(Dataset):
                 graph_data.append(graph)
         return graph_data
 
+class MLP(torch.nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(MLP, self).__init__()
+        self.lin1 = Linear(input_dim, hidden_dim)
+        self.lin2 = Linear(hidden_dim, output_dim)
 
+    def forward(self, data):
+        x = self.lin1(data.x)
+        x = x.relu()
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = self.lin2(x)
+        return x
+    
 class GCN(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(GCN, self).__init__()
         self.conv1 = GCNConv(input_dim, hidden_dim[0])
         self.conv2 = GCNConv(hidden_dim[0], hidden_dim[1])
         self.conv3 = GCNConv(hidden_dim[1], output_dim)
-
+        self.pooling = global_mean_pool
+        
     def forward(self, data):
-        x, edge_index = data.x, data.edge_index
+        x, edge_index, batch = data.x, data.edge_index, data.batch
         x = self.conv1(x, edge_index)
         x = F.relu(x)
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv2(x, edge_index)
+        x = F.relu(x)
+        x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv3(x, edge_index)
-        return F.log_softmax(x, dim=1)
+        x = self.pooling(x, batch)  # Perform global pooling to obtain graph embeddings
+
+        return x
 
 
-def train():
+def train(model, train_loader, optimizer, device):
    # Training loop
    model.train()
+   criterion = torch.nn.CrossEntropyLoss()
+   total_loss = 0.0
    for data in train_loader:
        data = data.to(device)
        optimizer.zero_grad()
        output = model(data)
-       # Flatten the output and target tensors
        output_flat = output.view(-1, output.size(-1))
        target_flat = data.y.view(-1)
-
-       # Calculate the loss
-       loss = F.cross_entropy(output_flat, target_flat)
        
-       optimizer.zero_grad()
+       loss = criterion(output_flat, target_flat)
        loss.backward()
        optimizer.step()
+       total_loss += loss.item() * data.num_graphs
+   return total_loss / len(train_loader.dataset)
 
-   return loss
-
-def test():
+def test(model, test_loader, device):
     # Evaluation on testing data
     model.eval()
     correct = 0
@@ -95,20 +107,26 @@ def test():
             data = data.to(device)
             output = model(data)
             _, predicted = torch.max(output, 1)
-            total += data.y.size(0)
+            total += data.num_graphs
             correct += (predicted == data.y).sum().item()
     accuracy = correct / total
     return accuracy
 
-def visualize(h, color):
-    z = TSNE(n_components=2).fit_transform(h.detach().cpu().numpy())
+def visualize(graph_embeddings, labels):
 
-    plt.figure(figsize=(10,10))
+    # Apply t-SNE for dimensionality reduction
+    embeddings_2d = TSNE(n_components=2).fit_transform(graph_embeddings)
+    
+    # Visualize the embeddings
+    plt.figure(figsize=(10, 10))
     plt.xticks([])
     plt.yticks([])
-
-    plt.scatter(z[:, 0], z[:, 1], s=70, c=color, cmap="Set2")
-    plt.show()    
+    
+    plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], s=70, c=labels, cmap="Set2")
+    plt.title('t-SNE Visualization of Node Embeddings')
+    plt.xlabel('t-SNE Dimension 1')
+    plt.ylabel('t-SNE Dimension 2')
+    plt.show() 
 
 if __name__ == "__main__":
     # Create dataset and data loaders
@@ -116,22 +134,43 @@ if __name__ == "__main__":
     train_size = int(0.8 * len(dataset))
     test_size = len(dataset) - train_size
     train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
     # Initialize model, optimizer, and loss function
-    model = GCN(input_dim=dataset[0].num_features, hidden_dim=[32,16], output_dim=3).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-3)
+    model = GCN(input_dim=dataset[0].num_features, hidden_dim=[128,64], output_dim=3).to(device)
+    #model = MLP(input_dim=dataset[0].num_features, hidden_dim=16, output_dim=3).to(device)
+    print(model)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
     
    
-    for epoch in range(1, 31):
-        loss = train()
-        print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}')
-    test_acc = test()
+    for epoch in range(1, 45):
+        train_loss = train(model, train_loader, optimizer, device)
+        print(f'Epoch: {epoch:03d}, Loss: {train_loss:.4f}')
+  
+    # Testing
+    test_acc = test(model, test_loader, device)
     print(f'Test Accuracy: {test_acc:.4f}')
-
-        
+    
+    graph_embeddings = []
+    graph_labels = []
+    model.eval()
+    
+    # Iterate over the test dataset and collect node embeddings and labels
+    with torch.no_grad():
+        for data in test_loader:
+            data = data.to(device)
+            output = model(data)
+            graph_embeddings.append(output.cpu().numpy())
+            graph_labels.append(data.y.cpu().numpy())
+    
+    # Concatenate node embeddings and labels
+    graph_embeddings = np.concatenate(graph_embeddings, axis=0)
+    graph_labels = np.concatenate(graph_labels, axis=0)
+    visualize(graph_embeddings, graph_labels)
+      
     
 # Example Dataset 
 # features             edges             labels   
