@@ -71,7 +71,7 @@ class GCN(torch.nn.Module):
         x = F.relu(x)
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv2(x, edge_index)
-        x = F.relu(x)
+        #x = F.relu(x)
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv3(x, edge_index)
         x = self.pooling(x, batch)  # Perform global pooling to obtain graph embeddings
@@ -143,7 +143,7 @@ if __name__ == "__main__":
     model = GCN(input_dim=dataset[0].num_features, hidden_dim=[128,64], output_dim=3).to(device)
     #model = MLP(input_dim=dataset[0].num_features, hidden_dim=16, output_dim=3).to(device)
     print(model)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
     
    
     for epoch in range(1, 45):

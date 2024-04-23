@@ -19,20 +19,28 @@ def generate_graph(x,v,vehicles_phase,ncells):
     labels = []
     nvehicles = len(x)
     ntimesteps = len(x[0])
+    l = 0
 
     for t in range(ntimesteps-1):
         edges.append([])
         features.append([])
-        for i in range(nvehicles - 1):
-            features[t].append(v[i][t+1][1])
+        for i in range(nvehicles):
+            features[l].append(v[i][t+1][1])
             for j in range(i, nvehicles): # graph with self-loop
                 distance = x[j][t+1][1] - x[i][t+1][1]  
                 if abs(distance) <= 6 and x[j][t+1][1] != int(ncells) and x[i][t+1][1] != int(ncells) :
-                    edges[t].append(i)
-                    edges[t].append(j)
-        features[t].append(v[nvehicles-1][t+1][1])
+                    edges[l].append(i)
+                    edges[l].append(j)
+        #features[l].append(v[nvehicles-1][t+1][1])
         labelt = most_common_element(vehicles_phase[:,t+1])
         labels.append(int(labelt[0]))
+        l += 1
+        if int(labelt[0]) == 1:
+            for _ in range(3):
+                edges.append(edges[l-1])
+                features.append(features[l-1])
+                labels.append(int(labelt[0]))
+                l += 1
             
     save_data(features, edges, labels, 'graph_dataset.txt')
     

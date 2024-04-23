@@ -462,7 +462,7 @@ class KKW:
         
 
 if __name__ == "__main__":
-    densities = np.arange(0.01, 1, 0.1)
+    densities = np.arange(0.01, 0.7, 0.1)
     LMeasureFormula = 2 #1: segment detectors, 2:unit length
     for itr in densities:
         kkw_instance = KKW(itr)
