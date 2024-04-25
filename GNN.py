@@ -8,7 +8,7 @@ from torch_geometric.loader import DataLoader
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 import numpy as np
-
+from mpl_toolkits.mplot3d import Axes3D
 
 
 class GraphDataset(Dataset):
@@ -20,7 +20,7 @@ class GraphDataset(Dataset):
     
     def __getitem__(self, idx):
         graph = self.graph_data[idx]
-        x = torch.tensor(graph['node_features'], dtype=torch.float).view(-1, 1)
+        x = torch.tensor(graph['node_features'], dtype=torch.float)
         edge_index = torch.tensor(graph['edge_index'], dtype=torch.long).t().contiguous()
         y = torch.tensor(graph['target']-1, dtype=torch.long)
         num_nodes = len(graph['node_features'])
@@ -33,16 +33,18 @@ class GraphDataset(Dataset):
             for line in file:
                 line = line.strip().split()
                 # Parse node features
-                node_features = [int(x) for x in line[0].split(',')]
+                node_features = [[int(x) for x in feat.split(',')] for feat in line[0].split('|')]
                 # Parse edge connections
                 edge_indices = [int(x) for x in line[1:]]
-                edge_indices = [(edge_indices[i], edge_indices[i+1]) for i in range(0, len(edge_indices)-1, 2)]
+                num_nodes = len(node_features)
+                edge_indices = [(edge_indices[i], edge_indices[i+1]) for i in range(0, len(edge_indices)-1, 2) if edge_indices[i] < num_nodes and edge_indices[i+1] < num_nodes]
                 # Parse target label
                 target = int(line[-1])
                 # Create graph dictionary
                 graph = {'node_features': node_features, 'edge_index': edge_indices, 'target': target}
                 graph_data.append(graph)
         return graph_data
+
 
 class MLP(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
@@ -72,7 +74,7 @@ class GCN(torch.nn.Module):
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv2(x, edge_index)
         #x = F.relu(x)
-        x = F.dropout(x, p=0.5, training=self.training)
+        #x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv3(x, edge_index)
         x = self.pooling(x, batch)  # Perform global pooling to obtain graph embeddings
 
@@ -115,17 +117,25 @@ def test(model, test_loader, device):
 def visualize(graph_embeddings, labels):
 
     # Apply t-SNE for dimensionality reduction
-    embeddings_2d = TSNE(n_components=2).fit_transform(graph_embeddings)
+    embeddings_3d = TSNE(n_components=3).fit_transform(graph_embeddings)
+    
+    unique_labels = set(labels)
+    phase_colors = {0: 'blue', 1: 'green', 2: 'red'}
     
     # Visualize the embeddings
-    plt.figure(figsize=(10, 10))
-    plt.xticks([])
-    plt.yticks([])
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection='3d')
     
-    plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], s=70, c=labels, cmap="Set2")
-    plt.title('t-SNE Visualization of Node Embeddings')
-    plt.xlabel('t-SNE Dimension 1')
-    plt.ylabel('t-SNE Dimension 2')
+    for i, label in enumerate(unique_labels):
+        indices = labels == label
+        ax.scatter(embeddings_3d[indices, 0], embeddings_3d[indices, 1], embeddings_3d[indices, 2], s=40, c=[phase_colors[i]], label=f'Class {label+1}')
+    
+    #plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], s=70, c=labels, cmap="Set2")
+    ax.set_title('t-SNE Visualization of Graph Embeddings')
+    ax.set_xlabel('t-SNE Dimension 1')
+    ax.set_ylabel('t-SNE Dimension 2')
+    ax.set_zlabel('t-SNE Dimension 3')
+    ax.legend()
     plt.show() 
 
 if __name__ == "__main__":
@@ -134,19 +144,20 @@ if __name__ == "__main__":
     train_size = int(0.8 * len(dataset))
     test_size = len(dataset) - train_size
     train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Initialize model, optimizer, and loss function
-    model = GCN(input_dim=dataset[0].num_features, hidden_dim=[128,64], output_dim=3).to(device)
+    input_dim = dataset[0].num_node_features   # Get the number of features per node from the first graph
+    model = GCN(input_dim=input_dim, hidden_dim=[64,32], output_dim=3).to(device)
     #model = MLP(input_dim=dataset[0].num_features, hidden_dim=16, output_dim=3).to(device)
     print(model)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-3)
     
    
-    for epoch in range(1, 45):
+    for epoch in range(1, 31):
         train_loss = train(model, train_loader, optimizer, device)
         print(f'Epoch: {epoch:03d}, Loss: {train_loss:.4f}')
   
@@ -173,8 +184,8 @@ if __name__ == "__main__":
       
     
 # Example Dataset 
-# features             edges             labels   
-# 1.0, 2.0, 3.0, 4.0   0 1 1 2 2 3 3 0   0      #graph1
-# 0.5, 1.5, 2.5, 3.5   0 1 1 2 2 3 3 0   1
-# 2.0, 3.0, 4.0, 5.0   0 1 1 2 2 3 3 0   0
+# features               edges             labels   
+# 1,2|5,43|5,138|5,1    0 1 1 2 2 3 3 0   0      #graph1
+# 5,48|5,143|5,6|5,43   0 1 1 2 2 3 3 0   1
+
 
