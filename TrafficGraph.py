@@ -22,29 +22,33 @@ def generate_graph(x,v,vehicles_phase,ncells):
     l = 0
 
     for t in range(ntimesteps-1):
-        edges.append([])
-        features.append([])
-        counting_label = []
+        if t % 20 == 0:
+            edges.append([])
+            features.append([])
+            counting_label = []
         for i in range(nvehicles):
-            features[l].append([v[i][t+1][1], x[i][t+1][1]])
-            for j in range(i, nvehicles): # graph with self-loop
-                distance = x[j][t+1][1] - x[i][t+1][1]
-                if x[i][t+1][1] != int(ncells):
-                    counting_label.append(vehicles_phase[i,t+1])
+            features[l].append([v[i][t+1][1], x[i][t+1][1], t])
+            if x[i][t+1][1] != int(ncells):
+                counting_label.append(vehicles_phase[i,t+1])
+                for j in range(i, nvehicles): # graph with self-loop
+                    distance = x[j][t+1][1] - x[i][t+1][1]
                     if abs(distance) <= 6 and x[j][t+1][1] != int(ncells) :
-                        edges[l].append(i)
-                        edges[l].append(j)
+                        edges[l].append(i+len(features[l]))
+                        edges[l].append(j+len(features[l]))
+                        if t % 20 != 0:
+                            edges[l].append(i+len(features[l]))
+                            edges[l].append(i+len(features[l])-nvehicles)
         #features[l].append(v[nvehicles-1][t+1][1])
-        
-        labelt = most_common_element(counting_label)
-        labels.append(int(labelt[0]))
-        l += 1
-        # if int(labelt[0]) == 2:
-        #     for _ in range(2):
-        #         edges.append(edges[l-1])
-        #         features.append(features[l-1])
-        #         labels.append(int(labelt[0]))
-        #         l += 1
+        if (t+1) % 20 == 0:
+            labelt = most_common_element(counting_label)
+            labels.append(int(labelt[0]))
+            l += 1
+            if int(labelt[0]) == 2:
+                for _ in range(2):
+                    edges.append(edges[l-1])
+                    features.append(features[l-1])
+                    labels.append(int(labelt[0]))
+                    l += 1
             
     save_data(features, edges, labels, 'graph_dataset.txt')
     

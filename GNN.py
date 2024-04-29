@@ -74,7 +74,7 @@ class GCN(torch.nn.Module):
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv2(x, edge_index)
         #x = F.relu(x)
-        x = F.dropout(x, p=0.5, training=self.training)
+        #x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv3(x, edge_index)
         x = self.pooling(x, batch)  # Perform global pooling to obtain graph embeddings
 
@@ -101,7 +101,7 @@ def train(model, train_loader, optimizer, device):
        uniform_dist = torch.ones_like(output) / output.size(-1)  # Uniform distribution
        kl_loss_value = kl_loss(F.log_softmax(output, dim=-1), uniform_dist)
         
-       lambda_kl = 0.01
+       lambda_kl = 0.05
        # Combine both losses
        loss = ce_loss + kl_loss_value * lambda_kl  
 
@@ -175,14 +175,14 @@ if __name__ == "__main__":
     train_size = int(0.8 * len(dataset))
     test_size = len(dataset) - train_size
     train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Initialize model, optimizer, and loss function
     input_dim = dataset[0].num_node_features   # Get the number of features per node from the first graph
-    model = GCN(input_dim=input_dim, hidden_dim=[32,16], output_dim=3).to(device)
+    model = GCN(input_dim=input_dim, hidden_dim=[64,32], output_dim=3).to(device)
     #model = MLP(input_dim=dataset[0].num_features, hidden_dim=16, output_dim=3).to(device)
     print(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=1e-4)
