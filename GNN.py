@@ -74,7 +74,7 @@ class GCN(torch.nn.Module):
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv2(x, edge_index)
         #x = F.relu(x)
-        #x = F.dropout(x, p=0.5, training=self.training)
+        x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv3(x, edge_index)
         x = self.pooling(x, batch)  # Perform global pooling to obtain graph embeddings
 
@@ -84,7 +84,9 @@ class GCN(torch.nn.Module):
 def train(model, train_loader, optimizer, device):
    # Training loop
    model.train()
-   criterion = torch.nn.CrossEntropyLoss()
+   # Add Kullback-Leibler (KL) Divergence Loss
+   kl_loss = torch.nn.KLDivLoss(reduction='batchmean')
+   criterion_ce = torch.nn.CrossEntropyLoss()
    total_loss = 0.0
    for data in train_loader:
        data = data.to(device)
@@ -93,7 +95,16 @@ def train(model, train_loader, optimizer, device):
        output_flat = output.view(-1, output.size(-1))
        target_flat = data.y.view(-1)
        
-       loss = criterion(output_flat, target_flat)
+       ce_loss = criterion_ce(output_flat, target_flat)
+       
+       # Compute KL Divergence Loss (e.g., with uniform distribution)
+       uniform_dist = torch.ones_like(output) / output.size(-1)  # Uniform distribution
+       kl_loss_value = kl_loss(F.log_softmax(output, dim=-1), uniform_dist)
+        
+       lambda_kl = 0.01
+       # Combine both losses
+       loss = ce_loss + kl_loss_value * lambda_kl  
+
        loss.backward()
        optimizer.step()
        total_loss += loss.item() * data.num_graphs
@@ -114,29 +125,49 @@ def test(model, test_loader, device):
     accuracy = correct / total
     return accuracy
 
-def visualize(graph_embeddings, labels):
+def visualize(graph_embeddings, labels, ptype):
+    if ptype == ('2d'):
+        # Apply t-SNE for dimensionality reduction
+        embeddings_2d = TSNE(n_components=2).fit_transform(graph_embeddings)
+        
+        unique_labels = set(labels)
+        phase_colors = {0: 'blue', 1: 'green', 2: 'red'}
+        
+        # Visualize the embeddings
+        plt.figure(figsize=(10, 10))
+   
+        for i, label in enumerate(unique_labels):
+            indices = labels == label
+            plt.scatter(embeddings_2d[indices, 0], embeddings_2d[indices, 1], s=40, c=[phase_colors[i]], label=f'Class {label+1}')
+        
+        #plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], s=70, c=labels, cmap="Set2")
+        plt.title('t-SNE Visualization of Graph Embeddings')
+        plt.xlabel('t-SNE Dimension 1')
+        plt.ylabel('t-SNE Dimension 2')
+        plt.legend()
+        plt.show() 
 
-    # Apply t-SNE for dimensionality reduction
-    embeddings_3d = TSNE(n_components=3).fit_transform(graph_embeddings)
-    
-    unique_labels = set(labels)
-    phase_colors = {0: 'blue', 1: 'green', 2: 'red'}
-    
-    # Visualize the embeddings
-    fig = plt.figure(figsize=(10, 10))
-    ax = fig.add_subplot(111, projection='3d')
-    
-    for i, label in enumerate(unique_labels):
-        indices = labels == label
-        ax.scatter(embeddings_3d[indices, 0], embeddings_3d[indices, 1], embeddings_3d[indices, 2], s=40, c=[phase_colors[i]], label=f'Class {label+1}')
-    
-    #plt.scatter(embeddings_2d[:, 0], embeddings_2d[:, 1], s=70, c=labels, cmap="Set2")
-    ax.set_title('t-SNE Visualization of Graph Embeddings')
-    ax.set_xlabel('t-SNE Dimension 1')
-    ax.set_ylabel('t-SNE Dimension 2')
-    ax.set_zlabel('t-SNE Dimension 3')
-    ax.legend()
-    plt.show() 
+    if ptype == ('3d'):
+        # Apply t-SNE for dimensionality reduction
+        embeddings_3d = TSNE(n_components=3).fit_transform(graph_embeddings)
+        
+        unique_labels = set(labels)
+        phase_colors = {0: 'blue', 1: 'green', 2: 'red'}
+        
+        # Visualize the embeddings
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(111, projection='3d')
+        
+        for i, label in enumerate(unique_labels):
+            indices = labels == label
+            ax.scatter(embeddings_3d[indices, 0], embeddings_3d[indices, 1], embeddings_3d[indices, 2], s=40, c=[phase_colors[i]], label=f'Class {label+1}')
+
+        ax.set_title('t-SNE Visualization of Graph Embeddings')
+        ax.set_xlabel('t-SNE Dimension 1')
+        ax.set_ylabel('t-SNE Dimension 2')
+        ax.set_zlabel('t-SNE Dimension 3')
+        ax.legend()
+        plt.show() 
 
 if __name__ == "__main__":
     # Create dataset and data loaders
@@ -144,17 +175,17 @@ if __name__ == "__main__":
     train_size = int(0.8 * len(dataset))
     test_size = len(dataset) - train_size
     train_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, test_size])
-    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=1, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Initialize model, optimizer, and loss function
     input_dim = dataset[0].num_node_features   # Get the number of features per node from the first graph
-    model = GCN(input_dim=input_dim, hidden_dim=[64,32], output_dim=3).to(device)
+    model = GCN(input_dim=input_dim, hidden_dim=[32,16], output_dim=3).to(device)
     #model = MLP(input_dim=dataset[0].num_features, hidden_dim=16, output_dim=3).to(device)
     print(model)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-3)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=1e-4)
     
    
     for epoch in range(1, 31):
@@ -180,7 +211,7 @@ if __name__ == "__main__":
     # Concatenate node embeddings and labels
     graph_embeddings = np.concatenate(graph_embeddings, axis=0)
     graph_labels = np.concatenate(graph_labels, axis=0)
-    visualize(graph_embeddings, graph_labels)
+    visualize(graph_embeddings, graph_labels, '2d')
       
     
 # Example Dataset 

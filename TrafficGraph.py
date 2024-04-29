@@ -39,12 +39,12 @@ def generate_graph(x,v,vehicles_phase,ncells):
         labelt = most_common_element(counting_label)
         labels.append(int(labelt[0]))
         l += 1
-        if int(labelt[0]) == 2:
-            for _ in range(2):
-                edges.append(edges[l-1])
-                features.append(features[l-1])
-                labels.append(int(labelt[0]))
-                l += 1
+        # if int(labelt[0]) == 2:
+        #     for _ in range(2):
+        #         edges.append(edges[l-1])
+        #         features.append(features[l-1])
+        #         labels.append(int(labelt[0]))
+        #         l += 1
             
     save_data(features, edges, labels, 'graph_dataset.txt')
     

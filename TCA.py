@@ -15,7 +15,7 @@ import math
 import TrafficGraph as TG
 
 class KKW:
-    def __init__(self,density):
+    def __init__(self,density,init_mode):
         self.D0 = 2
         self.D1 = 2
         self.a = self.b = 1
@@ -49,6 +49,9 @@ class KKW:
         self.local_phase_data = []
         
         self.vehicles_phase = np.ones((self.nvehicles,self.ntimesteps))
+                   
+        # Initialize queue for vehicles waiting to enter the road
+        self.queue = deque()
         
         self.v = []
         for i in range(self.nvehicles):
@@ -56,29 +59,38 @@ class KKW:
             for _ in range(self.ntimesteps):
                 sublist.append([i, 0])
             self.v.append(sublist)       
-    
-        # random_numbers = [rnd.randint(0, self.vmax) for _ in range(self.nvehicles)]
-        for j in range(self.nvehicles):
-            self.v[j][0][1] = self.vmax
-        
+            
         self.x = []
         for i in range(self.nvehicles):
             sublist = []
             for _ in range(self.ntimesteps):
                 sublist.append([i, 0])
             self.x.append(sublist)
-     
-        if self.ncells == self.nvehicles:
-            for j in range(self.nvehicles):
-               self.x[j][0][1] = j
-        else:
-            random_numbers = rnd.sample(range(1, self.ncells), self.nvehicles)
-            random_numbers = sorted(random_numbers)
-            for j in range(self.nvehicles):
-               self.x[j][0][1] = random_numbers[j]
-           
-        # Initialize queue for vehicles waiting to enter the road
-        self.queue = deque()
+    
+        # random_numbers = [rnd.randint(0, self.vmax) for _ in range(self.nvehicles)]
+        for j in range(self.nvehicles):
+            self.v[j][0][1] = self.vmax 
+            
+        if init_mode == 'random':     
+            if self.ncells == self.nvehicles:
+                for j in range(self.nvehicles):
+                   self.x[j][0][1] = j
+            else:
+                random_numbers = rnd.sample(range(1, self.ncells), self.nvehicles)
+                random_numbers = sorted(random_numbers)
+                for j in range(self.nvehicles):
+                   self.x[j][0][1] = random_numbers[j]
+        elif init_mode == 'periodic':
+            self.x[0][0][1] = 1
+            for j in range(1,self.nvehicles):
+                self.x[j][0][1] = self.x[j-1][0][1] + self.vmax + 1
+                if self.x[j][0][1] > self.ncells:
+                    self.queue.append(j)
+                    self.v[j][0][0] = self.nvehicles+1
+                    self.v[j][0][1] = self.vmax
+                    self.x[j][0][0] = self.nvehicles+1
+                    self.x[j][0][1] = self.ncells
+
     
     def most_common_element(self,lst):
         counts = Counter(lst)
@@ -430,7 +442,7 @@ class KKW:
              plt.grid(True)
              plt.show()
              
-    def plot_flow_vs_density(self, densities, LMeasureFormula):
+    def plot_flow_vs_density(self, densities, LMeasureFormula, init_mode):
         flow_counts = [[] for _ in range(len(densities))]
         density_counts = [[] for _ in range(len(densities))]
         phase_colors = {1: 'blue', 2: 'green', 3: 'red'}  # Define colors for each phase
@@ -438,7 +450,7 @@ class KKW:
         global_flow = []
         
         for idx, density in enumerate(densities):
-            self.__init__(density)
+            self.__init__(density, init_mode)
             self.run(LMeasureFormula)
             flow_counts[idx] = self.local_flow_data
             density_counts[idx] = self.local_density_data
@@ -462,13 +474,18 @@ class KKW:
         
 
 if __name__ == "__main__":
-    densities = np.arange(0.01, 0.7, 0.1)
-    LMeasureFormula = 2 #1: segment detectors, 2:unit length
+    densities = np.arange(0.01, 0.4, 0.01)
+    LMeasureFormula = 1 #1: segment detectors, 2:unit length
+    init_mode = 'random'
+    # kkw_instance = KKW(0.18,init_mode)
+    # kkw_instance.plot_flow_vs_density(densities, LMeasureFormula, init_mode)
+    # kkw_instance.run(LMeasureFormula)
+    # kkw_instance.plot_position_vs_time()
+    # kkw_instance.plot_position_vs_time_colored()
     for itr in densities:
-        kkw_instance = KKW(itr)
+        kkw_instance = KKW(itr,init_mode)
         kkw_instance.run(LMeasureFormula)
-    #kkw_instance.plot_position_vs_time()
-    #kkw_instance.plot_position_vs_time_colored()
-    #kkw_instance.plot_flow_vs_density(densities, LMeasureFormula)
+    #     kkw_instance.plot_position_vs_time()
+    #     kkw_instance.plot_position_vs_time_colored()
         kkw_instance.create_graph()
 
