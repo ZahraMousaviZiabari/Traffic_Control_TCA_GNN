@@ -19,18 +19,18 @@ class KKW:
         self.D0 = 2
         self.D1 = 2
         self.a = self.b = 1
-        self.vp = 4
-        self.pa1 = 0.8
-        self.pa2 = 0.15
+        self.vp = 3
+        self.pa1 = 0.75
+        self.pa2 = 0.2
         self.p0 = 0.425
-        self.pd = 0.04
+        self.pd = 0.1
         self.vmax = 5 # cells/timestep
         self.l = 1 #cells
         self.dt = 1 #s
         self.dx = 0.5 #m
         
-        self.ncells = 300
-        self.ntimesteps = 401
+        self.ncells = 215
+        self.ntimesteps = 441
         self.density = density    #0.03 free flow, #0.1 jam
         
         self.nvehicles = int(self.ncells * self.density) 
@@ -102,7 +102,7 @@ class KKW:
 
         rnd.seed(42)
         total_speed = 0
-        checkpoints = [50, 200, 255]
+        checkpoints = [50, 200, 150]
         phase = [1,2,3] #1: free, 2: synchronized 3:moving jam
         Tmp = 20 #measurement period
         K1d = 5  #segment length
@@ -474,7 +474,7 @@ class KKW:
         
 
 if __name__ == "__main__":
-    densities = np.arange(0.01, 0.7, 0.01)
+    densities = np.arange(0.01, 0.5, 0.005)
     LMeasureFormula = 1 #1: segment detectors, 2:unit length
     init_mode = 'random'
     # kkw_instance = KKW(0.18,init_mode)

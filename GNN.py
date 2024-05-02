@@ -10,7 +10,6 @@ from sklearn.manifold import TSNE
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
 
-
 class GraphDataset(Dataset):
     def __init__(self, data_file):
         self.graph_data = self.load_data(data_file)
@@ -80,6 +79,18 @@ class GCN(torch.nn.Module):
 
         return x
 
+def compute_class_proportions(dataset):
+    # Initialize counters for each class
+    class_counts = torch.zeros(3, dtype=torch.float)
+    
+    # Loop over the dataset to count occurrences of each class
+    for data in dataset:
+        class_counts[data.y] += 1
+    
+    # Compute class proportions
+    class_proportions = class_counts / len(dataset)
+    
+    return class_proportions
 
 def train(model, train_loader, optimizer, device):
    # Training loop
@@ -96,11 +107,10 @@ def train(model, train_loader, optimizer, device):
        target_flat = data.y.view(-1)
        
        ce_loss = criterion_ce(output_flat, target_flat)
+      
+        # Compute KL Divergence Loss using class proportions
+       kl_loss_value = kl_loss(F.log_softmax(output, dim=-1), class_proportions)
        
-       # Compute KL Divergence Loss (e.g., with uniform distribution)
-       uniform_dist = torch.ones_like(output) / output.size(-1)  # Uniform distribution
-       kl_loss_value = kl_loss(F.log_softmax(output, dim=-1), uniform_dist)
-        
        lambda_kl = 0.05
        # Combine both losses
        loss = ce_loss + kl_loss_value * lambda_kl  
@@ -180,12 +190,16 @@ if __name__ == "__main__":
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
+    # Compute class proportions
+    class_proportions = compute_class_proportions(train_dataset).to(device)
+
+    
     # Initialize model, optimizer, and loss function
     input_dim = dataset[0].num_node_features   # Get the number of features per node from the first graph
     model = GCN(input_dim=input_dim, hidden_dim=[64,32], output_dim=3).to(device)
     #model = MLP(input_dim=dataset[0].num_features, hidden_dim=16, output_dim=3).to(device)
     print(model)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=4e-4)
     
    
     for epoch in range(1, 31):
