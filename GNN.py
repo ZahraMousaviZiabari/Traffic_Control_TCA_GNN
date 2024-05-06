@@ -8,7 +8,10 @@ from torch_geometric.loader import DataLoader
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
 import numpy as np
+from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
 from mpl_toolkits.mplot3d import Axes3D
+
+
 
 class GraphDataset(Dataset):
     def __init__(self, data_file):
@@ -111,7 +114,7 @@ def train(model, train_loader, optimizer, device):
         # Compute KL Divergence Loss using class proportions
        kl_loss_value = kl_loss(F.log_softmax(output, dim=-1), class_proportions)
        
-       lambda_kl = 0.05
+       lambda_kl = 0.1
        # Combine both losses
        loss = ce_loss + kl_loss_value * lambda_kl  
 
@@ -123,6 +126,8 @@ def train(model, train_loader, optimizer, device):
 def test(model, test_loader, device):
     # Evaluation on testing data
     model.eval()
+    y_true = []
+    y_pred = []
     correct = 0
     total = 0
     with torch.no_grad():
@@ -132,8 +137,16 @@ def test(model, test_loader, device):
             _, predicted = torch.max(output, 1)
             total += data.num_graphs
             correct += (predicted == data.y).sum().item()
+            y_true.extend(data.y.cpu().numpy())
+            y_pred.extend(predicted.cpu().numpy())
+            
     accuracy = correct / total
-    return accuracy
+    precision = precision_score(y_true, y_pred, average='weighted')
+    recall = recall_score(y_true, y_pred, average='weighted')
+    f1 = f1_score(y_true, y_pred, average='weighted')
+    cm = confusion_matrix(y_true, y_pred)
+    
+    return accuracy, precision, recall, f1, cm
 
 def visualize(graph_embeddings, labels, ptype):
     if ptype == ('2d'):
@@ -178,7 +191,16 @@ def visualize(graph_embeddings, labels, ptype):
         ax.set_zlabel('t-SNE Dimension 3')
         ax.legend()
         plt.show() 
+        
+def plot_loss(train_losses):
+    plt.plot(train_losses, label='Training Loss')
+    plt.title('Training Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.show()
 
+        
 if __name__ == "__main__":
     # Create dataset and data loaders
     dataset = GraphDataset('graph_dataset.txt')
@@ -201,14 +223,25 @@ if __name__ == "__main__":
     print(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=4e-4)
     
-   
-    for epoch in range(1, 31):
+    # Training loop
+    train_losses = []
+    for epoch in range(1, 40):
         train_loss = train(model, train_loader, optimizer, device)
-        print(f'Epoch: {epoch:03d}, Loss: {train_loss:.4f}')
+        train_losses.append(train_loss)
+        print(f'Epoch: {epoch:03d}, Train Loss: {train_loss:.4f}')
+        
+    # Plot the training loss
+    plot_loss(train_losses)
+    
   
-    # Testing
-    test_acc = test(model, test_loader, device)
+    # Testing and Evaluation
+    test_acc, precision, recall, f1, cm = test(model, test_loader, device)
     print(f'Test Accuracy: {test_acc:.4f}')
+    print(f'Precision: {precision:.4f}')
+    print(f'Recall: {recall:.4f}')
+    print(f'F1 Score: {f1:.4f}')
+    print('Confusion Matrix:')
+    print(cm)
     
     graph_embeddings = []
     graph_labels = []

@@ -16,10 +16,10 @@ import TrafficGraph as TG
 
 class KKW:
     def __init__(self,density,init_mode):
-        self.D0 = 2
+        self.D0 = 3
         self.D1 = 2
         self.a = self.b = 1
-        self.vp = 3
+        self.vp = 4
         self.pa1 = 0.75
         self.pa2 = 0.2
         self.p0 = 0.425
@@ -29,7 +29,7 @@ class KKW:
         self.dt = 1 #s
         self.dx = 0.5 #m
         
-        self.ncells = 215
+        self.ncells = 441
         self.ntimesteps = 441
         self.density = density    #0.03 free flow, #0.1 jam
         
@@ -69,7 +69,7 @@ class KKW:
     
         # random_numbers = [rnd.randint(0, self.vmax) for _ in range(self.nvehicles)]
         for j in range(self.nvehicles):
-            self.v[j][0][1] = self.vmax 
+            self.v[j][0][1] = self.vmax
             
         if init_mode == 'random':     
             if self.ncells == self.nvehicles:
@@ -81,15 +81,17 @@ class KKW:
                 for j in range(self.nvehicles):
                    self.x[j][0][1] = random_numbers[j]
         elif init_mode == 'periodic':
-            self.x[0][0][1] = 1
-            for j in range(1,self.nvehicles):
-                self.x[j][0][1] = self.x[j-1][0][1] + self.vmax + 1
-                if self.x[j][0][1] > self.ncells:
+            self.x[self.nvehicles-1][0][1] = self.ncells - 1
+            for j in range(self.nvehicles-2,-1,-1):
+                self.x[j][0][1] = self.x[j+1][0][1] - self.vmax - 2
+                if self.x[j][0][1] < 1:
                     self.queue.append(j)
                     self.v[j][0][0] = self.nvehicles+1
                     self.v[j][0][1] = self.vmax
                     self.x[j][0][0] = self.nvehicles+1
                     self.x[j][0][1] = self.ncells
+        else:
+            raise ValueError("Wrong initialization mode!")
 
     
     def most_common_element(self,lst):
@@ -102,7 +104,7 @@ class KKW:
 
         rnd.seed(42)
         total_speed = 0
-        checkpoints = [50, 200, 150]
+        checkpoints = [100, 250, 400]
         phase = [1,2,3] #1: free, 2: synchronized 3:moving jam
         Tmp = 20 #measurement period
         K1d = 5  #segment length
@@ -172,7 +174,7 @@ class KKW:
                     min_value = min(self.vmax,gap,self.vdes)
                     if min_value == self.vmax:
                         self.vehicles_phase[i,t+1] = phase[0]
-                    elif min_value == gap:
+                    elif min_value == gap and gap < self.vmax-1:
                         self.vehicles_phase[i,t+1] = phase[2]
                     else:
                         self.vehicles_phase[i,t+1] = phase[1]
@@ -215,7 +217,7 @@ class KKW:
                 ######### Local Measurements ############
                 #detector1
                 if LMeasureFormula == 1: # Segment detector counts stopped vehicles too
-                    if self.x[i][t+1][1] >= checkpoints[0]  and self.x[i][t+1][1] < (checkpoints[0] + 5):
+                    if self.x[i][t+1][1] >= checkpoints[0]  and self.x[i][t+1][1] < (checkpoints[0] + 5) :
                         total_speed1 += self.v[i][t+1][1]
                         total_vehicles1 += 1
                         mean_phase1.append(self.vehicles_phase[i,t+1]) 
@@ -254,12 +256,12 @@ class KKW:
                                          
             
             ## Flow and Density Computation for different detectors after Tmp
-            if (t + 1) % Tmp == 0 and total_speed1> 0 and total_vehicles1>0 :                
+            if (t + 1) % Tmp == 0 and mean_phase1 != [] :                
                 if LMeasureFormula == 1:
                     local_density = total_vehicles1 / (Tmp*K1d)
                     flow = total_speed1 / (Tmp*K1d)
                     
-                if LMeasureFormula == 2:
+                if LMeasureFormula == 2 :
                     flow = total_vehicles1/Tmp
                     meanspeed = total_vehicles1/total_speed1
                     local_density = flow / meanspeed
@@ -271,7 +273,7 @@ class KKW:
                 self.local_density_data.append(local_density)
                 self.local_phase_data.append(mean_phase[0])
 
-            if (t + 1) % Tmp == 0 and total_speed2> 0 and total_vehicles2>0 :              
+            if (t + 1) % Tmp == 0 and mean_phase2 != [] :              
                 if LMeasureFormula == 1:
                     local_density = total_vehicles2/ (Tmp*K1d)
                     flow = total_speed2 / (Tmp*K1d)
@@ -288,7 +290,7 @@ class KKW:
                 self.local_density_data.append(local_density)
                 self.local_phase_data.append(mean_phase[0])
                 
-            if (t + 1) % Tmp == 0 and total_speed3> 0 and total_vehicles3>0 :               
+            if (t + 1) % Tmp == 0 and mean_phase3 != [] :               
                 if LMeasureFormula == 1:
                     local_density = total_vehicles3/ (Tmp*K1d)
                     flow = total_speed3 / (Tmp*K1d)
@@ -474,9 +476,9 @@ class KKW:
         
 
 if __name__ == "__main__":
-    densities = np.arange(0.01, 0.5, 0.005)
+    densities = np.arange(0.01, 0.7, 0.01)
     LMeasureFormula = 1 #1: segment detectors, 2:unit length
-    init_mode = 'random'
+    init_mode = 'periodic'
     # kkw_instance = KKW(0.18,init_mode)
     # kkw_instance.plot_flow_vs_density(densities, LMeasureFormula, init_mode)
     # kkw_instance.run(LMeasureFormula)
@@ -485,7 +487,7 @@ if __name__ == "__main__":
     for itr in densities:
         kkw_instance = KKW(itr,init_mode)
         kkw_instance.run(LMeasureFormula)
-    #     kkw_instance.plot_position_vs_time()
-    #     kkw_instance.plot_position_vs_time_colored()
+        # kkw_instance.plot_position_vs_time()
+        # kkw_instance.plot_position_vs_time_colored()
         kkw_instance.create_graph()
 
