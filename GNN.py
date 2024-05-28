@@ -59,6 +59,7 @@ class MLP(torch.nn.Module):
         x = x.relu()
         x = F.dropout(x, p=0.5, training=self.training)
         x = self.lin2(x)
+        x = global_mean_pool(x, data.batch)
         return x
     
 class GCN(torch.nn.Module):
@@ -106,10 +107,8 @@ def train(model, train_loader, optimizer, device):
        data = data.to(device)
        optimizer.zero_grad()
        output = model(data)
-       output_flat = output.view(-1, output.size(-1))
-       target_flat = data.y.view(-1)
        
-       ce_loss = criterion_ce(output_flat, target_flat)
+       ce_loss = criterion_ce(output, data.y)
       
         # Compute KL Divergence Loss using class proportions
        kl_loss_value = kl_loss(F.log_softmax(output, dim=-1), class_proportions)
@@ -225,7 +224,7 @@ if __name__ == "__main__":
     
     # Training loop
     train_losses = []
-    for epoch in range(1, 40):
+    for epoch in range(1, 50):
         train_loss = train(model, train_loader, optimizer, device)
         train_losses.append(train_loss)
         print(f'Epoch: {epoch:03d}, Train Loss: {train_loss:.4f}')
