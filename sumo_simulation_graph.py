@@ -27,7 +27,8 @@ Tstart = 8 # in min
 sigma = 0.01 # in km
 tau = 0.06 # in min
 dt = 1 #s
-dx = 0.5 #m
+dx = 7 #m
+maxspeed= 35
 
 Nt = int(np.ceil(Tmax/deltaT))
 NtStart = int(np.floor(Tstart/deltaT))
@@ -37,33 +38,38 @@ numberOfVehicles = np.zeros((Nx, Nt-NtStart))
 trafficLightPhase = 0
 
 
-def generate_graph(x,v,ncells):
+def generate_graph(p,v,ncells):
     features = []
     edges = []
-    nvehicles = len(x[0])
-    ntimesteps = len(x)
+    nvehicles = len(p[0])
+    ntimesteps = len(p)
     l = 0
     print("nvehicles",nvehicles)
     print("ntimesteps",ntimesteps)
-    for t in range(ntimesteps):
-        if t % 20 == 0:
+    for t in range(1, ntimesteps-1):
+        step = (t-1) % 20
+        if (t-1) % 20 == 0:
             edges.append([])
             features.append([])
-        for i in range(nvehicles):
-            features[l].append([v[t][i], x[t][i], t])
-            if x[t][i] != int(ncells):
-                for j in range(i, nvehicles): # graph with self-loop
-                    distance = x[t][j] - x[t][i]
-                    if abs(distance) <= 6 and x[t][j] != int(ncells) :
-                        edges[l].append(i+len(features[l]))
-                        edges[l].append(j+len(features[l]))
-                        if t % 20 != 0:
-                            edges[l].append(i+len(features[l]))
-                            edges[l].append(i+len(features[l])-nvehicles)
-        if (t+1) % 20 == 0:
+            q = 0
+        for i in range(len(p[t])):
+            if p[t][i] != int(ncells):
+                features[l].append([v[t][i], p[t][i], t])
+                for j in range(i, len(p[t])): # graph with self-loop
+                    distance = p[t][j] - p[t][i]
+                    if abs(distance) <= 6 and p[t][j] != int(ncells):
+                        edges[l].append(i+1+(step*nvehicles)-q)
+                        edges[l].append(j+1+(step*nvehicles)-q)
+                if step != 0 :
+                    edges[l].append(i+1+(step*nvehicles)-q)
+                    edges[l].append(i+1+(step*nvehicles)-nvehicles)
+            else:
+                q += 1
+
+        if t % 20 == 0:
             l += 1
 
-    save_data(features, edges, 'graph_dataset.txt')
+    save_data(features, edges, 'graph_dataset_unlabeled.txt')
     
     
 def save_data(features, edges, file_path):
@@ -75,16 +81,15 @@ def save_data(features, edges, file_path):
             # Write the graph data to the file
             file.write(f"{feature_str}   {edge_str}\n")
 
-def plot_position_vs_time(x,v):
+def plot_position_vs_time(p,v):
      
     # Extract positions from the nested list
-    flattened_positions = [p for sublist in x for p in sublist]
-    time = list(range(len(flattened_positions)))
-    nvehicles = len(x[0])
-    ntimesteps = len(x)
-    print("nvehicles",nvehicles)
-    print("ntimesteps",ntimesteps)
-    print("time", len(time))
+
+    flattened_time = []
+    flattened_positions = []
+    for time_step , positions in enumerate(p):
+        flattened_time.extend([time_step] * len(positions))
+        flattened_positions.extend(positions)
     # Flatten the speeds array
     flattened_speeds = [v for sublist in v for v in sublist]
 
@@ -104,7 +109,7 @@ def plot_position_vs_time(x,v):
     colors = reversed_cmap(normalized_speeds)
         
     # Plotting
-    plt.scatter(time, flattened_positions, marker='.', color=colors, s=4)
+    plt.scatter(flattened_time, flattened_positions, marker='.', color=colors, s=4)
    
     plt.xlabel('Time')
     plt.ylabel('Position')
@@ -117,7 +122,7 @@ def plot_position_vs_time(x,v):
 p = []
 v = []
 ncells = int((L * 1000) / dx)
-print("\n NtStart",NtStart)
+print("\nNtStart",NtStart)
 print("Nt",Nt)
 for n in range(Nt):
    if n%100 == 0:
@@ -129,10 +134,13 @@ for n in range(Nt):
            if traci.vehicle.getRouteID(vehID) == 'route_0' or traci.vehicle.getRouteID(vehID) == 'route_1':
                vehPos = traci.vehicle.getPosition(vehID)[0]
                vehSpeed = traci.vehicle.getSpeed(vehID)
+               vehPos_cell = int(np.floor(vehPos/dx))
+               vehSpeed_cell = int(round(vehSpeed/dx))
+
 
                if 0 <= vehPos < L*1000:    
-                   p[n-NtStart].append(int(vehPos/dx))
-                   v[n-NtStart].append(int((vehSpeed*dt)/dx))
+                   p[n-NtStart].append(vehPos_cell)
+                   v[n-NtStart].append(vehSpeed_cell)
                else:
                    p[n-NtStart].append(ncells)
                    v[n-NtStart].append(0)                      
@@ -151,10 +159,15 @@ traci.close()
 #min-max normalization
 max_val =  max(max(s) for s in v)
 min_val =  min(min(s) for s in v)
-diff = max_val - min_val
-for r in range(len(v)):
-    for c in range(len(v[r])):
-        v[r][c] = int(((v[r][c] - min_val) / diff) * 5)
+# diff = max_val - min_val
+# for r in range(len(v)):
+#     for c in range(len(v[r])):
+#         v[r][c] = round(((v[r][c] ) / max_val) * 5)
+        
+print("Maxval=",max_val)
+print("Minval=",min_val)
+print("deltaT", deltaT*60)
+print("ncells= ",ncells)
 
 t = np.linspace(Tstart, Tmax, Nt-NtStart)
 x = np.linspace(0, L, Nx)

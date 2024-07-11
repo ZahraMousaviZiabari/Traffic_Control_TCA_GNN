@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.nn import GCNConv, global_mean_pool, GATConv
 from torch.nn import Linear
 from torch_geometric.loader import DataLoader
 import matplotlib.pyplot as plt
@@ -46,6 +46,37 @@ class GraphDataset(Dataset):
                 graph = {'node_features': node_features, 'edge_index': edge_indices, 'target': target}
                 graph_data.append(graph)
         return graph_data
+    
+class GraphDataset_Unlabeled(Dataset):
+    def __init__(self, data_file):
+        self.graph_data = self.load_data(data_file)
+        
+    def __len__(self):
+        return len(self.graph_data)
+    
+    def __getitem__(self, idx):
+        graph = self.graph_data[idx]
+        x = torch.tensor(graph['node_features'], dtype=torch.float)
+        edge_index = torch.tensor(graph['edge_index'], dtype=torch.long).t().contiguous()
+        num_nodes = len(graph['node_features'])
+        data = Data(x=x, edge_index=edge_index)
+        return data
+    
+    def load_data(self, data_file):
+        graph_data = []
+        with open(data_file, 'r') as file:
+            for line in file:
+                line = line.strip().split()
+                # Parse node features
+                node_features = [[int(x) for x in feat.split(',')] for feat in line[0].split('|')]
+                # Parse edge connections
+                edge_indices = [int(x) for x in line[1:]]
+                num_nodes = len(node_features)
+                edge_indices = [(edge_indices[i], edge_indices[i+1]) for i in range(0, len(edge_indices)-1, 2) if edge_indices[i] < num_nodes and edge_indices[i+1] < num_nodes]
+                # Create graph dictionary
+                graph = {'node_features': node_features, 'edge_index': edge_indices}
+                graph_data.append(graph)
+        return graph_data
 
 
 class MLP(torch.nn.Module):
@@ -65,23 +96,42 @@ class MLP(torch.nn.Module):
 class GCN(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(GCN, self).__init__()
-        self.conv1 = GCNConv(input_dim, hidden_dim[0])
-        self.conv2 = GCNConv(hidden_dim[0], hidden_dim[1])
-        self.conv3 = GCNConv(hidden_dim[1], output_dim)
+        self.conv1 = GCNConv(input_dim, hidden_dim)
+        #self.conv2 = GCNConv(hidden_dim[0], hidden_dim[1])
+        self.conv3 = GCNConv(hidden_dim, output_dim)
         self.pooling = global_mean_pool
         
     def forward(self, data):
         x, edge_index, batch = data.x, data.edge_index, data.batch
         x = self.conv1(x, edge_index)
-        x = F.relu(x)
-        x = F.dropout(x, p=0.5, training=self.training)
-        x = self.conv2(x, edge_index)
         #x = F.relu(x)
+        #x = F.dropout(x, p=0.5, training=self.training)
+        #x = self.conv2(x, edge_index)
+        x = F.relu(x)
         #x = F.dropout(x, p=0.5, training=self.training)
         x = self.conv3(x, edge_index)
         x = self.pooling(x, batch)  # Perform global pooling to obtain graph embeddings
 
         return x
+    
+# Define GAT model with global pooling
+class GAT(torch.nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim):
+        super(GAT, self).__init__()
+        self.gat_conv1 = GATConv(input_dim, hidden_dim, heads=4)
+        #self.gat_conv2 = GATConv(4 * hidden_dim[0], hidden_dim[1], heads=4)
+        self.gat_conv3 = GATConv(4 * hidden_dim, output_dim, heads=1, concat=False)
+        self.pooling = global_mean_pool
+
+    def forward(self, data):
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+        x = self.gat_conv1(x, edge_index)
+        #x = self.gat_conv2(x, edge_index)
+        x = F.relu(x)
+        x = self.gat_conv3(x, edge_index)
+        x = self.pooling(x, batch)  # Global mean pooling
+        return x
+
 
 def compute_class_proportions(dataset):
     # Initialize counters for each class
@@ -113,7 +163,7 @@ def train(model, train_loader, optimizer, device):
         # Compute KL Divergence Loss using class proportions
        kl_loss_value = kl_loss(F.log_softmax(output, dim=-1), class_proportions)
        
-       lambda_kl = 0.1
+       lambda_kl = 0.05
        # Combine both losses
        loss = ce_loss + kl_loss_value * lambda_kl  
 
@@ -217,14 +267,15 @@ if __name__ == "__main__":
     
     # Initialize model, optimizer, and loss function
     input_dim = dataset[0].num_node_features   # Get the number of features per node from the first graph
-    model = GCN(input_dim=input_dim, hidden_dim=[64,32], output_dim=3).to(device)
-    #model = MLP(input_dim=dataset[0].num_features, hidden_dim=16, output_dim=3).to(device)
+    #model = GCN(input_dim=input_dim, hidden_dim=64, output_dim=3).to(device)
+    model = MLP(input_dim=dataset[0].num_features, hidden_dim=16, output_dim=3).to(device)
+    #model = GAT(input_dim=input_dim, hidden_dim=64, output_dim=3)
     print(model)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=4e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=3e-4)
     
     # Training loop
     train_losses = []
-    for epoch in range(1, 50):
+    for epoch in range(1, 100):
         train_loss = train(model, train_loader, optimizer, device)
         train_losses.append(train_loss)
         print(f'Epoch: {epoch:03d}, Train Loss: {train_loss:.4f}')
@@ -258,8 +309,22 @@ if __name__ == "__main__":
     graph_embeddings = np.concatenate(graph_embeddings, axis=0)
     graph_labels = np.concatenate(graph_labels, axis=0)
     visualize(graph_embeddings, graph_labels, '2d')
-      
     
+    predicted_labels = []
+    unlabeled_dataset = GraphDataset_Unlabeled('graph_dataset_unlabeled.txt')
+    unlabeled_data_loader = DataLoader(unlabeled_dataset, batch_size=1, shuffle=False)
+    with torch.no_grad():
+        for unlabeled_data in unlabeled_data_loader:
+            unlabeled_data = unlabeled_data.to(device)
+            # Perform prediction
+            output = model(unlabeled_data)
+            _, predicted = torch.max(output, 1)
+            predicted_labels.extend(predicted.cpu().numpy())
+    
+    # Assuming output contains the logits for each class, get the predicted
+    # labels
+    np.savetxt('predicted_labels.txt', predicted_labels, fmt='%d')
+
 # Example Dataset 
 # features               edges             labels   
 # 1,2|5,43|5,138|5,1    0 1 1 2 2 3 3 0   0      #graph1
