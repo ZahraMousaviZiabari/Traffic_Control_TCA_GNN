@@ -525,7 +525,7 @@ if __name__ == "__main__":
     densities = np.arange(0.01, 0.7, 0.005)
     LMeasureFormula = 1 #1: segment detectors, 2:unit length
     init_mode = 'random'
-    run_mode = 1 #1:run once for a density, >1: run in iteration for densities
+    run_mode = 4 #1:run once for a density, >1: run in iteration for densities
     # 2: plot position vs time  vs speed, 3: plot position vs time vs phase color
     # 4: create graph and no plot
     kkw_instance = KKW(0.5,init_mode)

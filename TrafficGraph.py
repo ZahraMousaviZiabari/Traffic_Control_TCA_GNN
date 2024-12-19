@@ -33,6 +33,13 @@ def generate_graph(x,v,vehicles_phase,ncells):
             features.append([])
             counting_label = []
             q = 0
+        original_to_adjusted = {}
+        for i in range(nvehicles):
+            if x[i][t][1] != int(ncells):  # Valid node
+                adjusted_index = i + 1 + (step * nvehicles)
+                original_to_adjusted[i] = adjusted_index - q
+            else:  # Node to be removed
+                q += 1
         for i in range(nvehicles):
             if x[i][t][1] != int(ncells):
                 features[l].append([v[i][t+1][1], x[i][t][1], t])
@@ -40,13 +47,12 @@ def generate_graph(x,v,vehicles_phase,ncells):
                 for j in range(i, nvehicles): # graph with self-loop
                     distance = x[j][t][1] - x[i][t][1]
                     if abs(distance) <= 6 and x[j][t][1] != int(ncells):
-                        edges[l].append(i+1+(step*nvehicles)-q)
-                        edges[l].append(j+1+(step*nvehicles)-q)
+                        edges[l].append(original_to_adjusted[i])
+                        edges[l].append(original_to_adjusted[j])
                 if step != 0 and x[i][t-1][1] != int(ncells):
-                    edges[l].append(i+1+(step*nvehicles)-q)
+                    edges[l].append(original_to_adjusted[i])
                     edges[l].append(i+1+(step*nvehicles)-nvehicles)
-            else:
-                q += 1
+
 
         #features[l].append(v[nvehicles-1][t+1][1])
         if (t+1) % 20 == 0:

@@ -52,19 +52,25 @@ def generate_graph(p,v,ncells):
             edges.append([])
             features.append([])
             q = 0
+            
+        original_to_adjusted = {}
+        for i in range(len(p[t])):
+            if p[t][i] != int(ncells):  # Valid node
+                adjusted_index = i + 1 + (step * nvehicles)
+                original_to_adjusted[i] = adjusted_index - q
+            else:  # Node to be removed
+                q += 1
         for i in range(len(p[t])):
             if p[t][i] != int(ncells):
                 features[l].append([v[t][i], p[t][i], t])
                 for j in range(i, len(p[t])): # graph with self-loop
                     distance = p[t][j] - p[t][i]
                     if abs(distance) <= 6 and p[t][j] != int(ncells):
-                        edges[l].append(i+1+(step*nvehicles)-q)
-                        edges[l].append(j+1+(step*nvehicles)-q)
+                        edges[l].append(original_to_adjusted[i])
+                        edges[l].append(original_to_adjusted[j])
                 if step != 0 :
-                    edges[l].append(i+1+(step*nvehicles)-q)
+                    edges[l].append(original_to_adjusted[i])
                     edges[l].append(i+1+(step*nvehicles)-nvehicles)
-            else:
-                q += 1
 
         if t % 20 == 0:
             l += 1

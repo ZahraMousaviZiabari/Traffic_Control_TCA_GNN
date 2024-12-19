@@ -268,8 +268,8 @@ if __name__ == "__main__":
     # Initialize model, optimizer, and loss function
     input_dim = dataset[0].num_node_features   # Get the number of features per node from the first graph
     #model = GCN(input_dim=input_dim, hidden_dim=64, output_dim=3).to(device)
-    model = MLP(input_dim=dataset[0].num_features, hidden_dim=16, output_dim=3).to(device)
-    #model = GAT(input_dim=input_dim, hidden_dim=64, output_dim=3)
+    #model = MLP(input_dim=dataset[0].num_features, hidden_dim=16, output_dim=3).to(device)
+    model = GAT(input_dim=input_dim, hidden_dim=64, output_dim=3)
     print(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=3e-4)
     
